@@ -1,0 +1,92 @@
+Loading config: planner.cfg
+Loading config: query.cfg
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.661, -0.285, 2.133)
+  Goal       : (-0.126, 1.259, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(0.980, 0.737) th=2.665  L=0.250 W=0.350
+    [1] centre=(-0.157, 0.643) th=3.061  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+
+=== Executing 20 RRT search attempts ===
+  Run  0: failed
+  Run  1: failed
+New best goal cost found: 10.6762 (node 245) at iter 1282
+  Run  2: cost =    10.6762 (seed=1781675141)
+  Run  3: failed
+  Run  4: failed
+New best goal cost found: 6.86166 (node 131) at iter 750
+  Run  5: cost =     6.8617 (seed=1781675144)
+  Run  6: failed
+  Run  7: failed
+  Run  8: failed
+  Run  9: failed
+  Run 10: failed
+  Run 11: failed
+  Run 12: failed
+  Run 13: failed
+New best goal cost found: 10.6954 (node 228) at iter 1161
+  Run 14: cost =    10.6954 (seed=1781675153)
+  Run 15: failed
+New best goal cost found: 9.28806 (node 156) at iter 594
+New best goal cost found: 9.26634 (node 324) at iter 1205
+New best goal cost found: 6.94586 (node 360) at iter 1346
+  Run 16: cost =     6.9459 (seed=1781675155)
+  Run 17: failed
+New best goal cost found: 7.33208 (node 83) at iter 296
+New best goal cost found: 6.95435 (node 89) at iter 311
+New best goal cost found: 6.92725 (node 93) at iter 323
+New best goal cost found: 6.67792 (node 164) at iter 545
+New best goal cost found: 6.56545 (node 367) at iter 1247
+  Run 18: cost =     6.5654 (seed=1781675157)
+New best goal cost found: 10.8419 (node 169) at iter 863
+New best goal cost found: 9.64077 (node 171) at iter 874
+  Run 19: cost =     9.6408 (seed=1781675158)
+Best path found at iter 1247 in 0.007460 seconds within the winning RRT run.
+
+Globally best cost: 6.5654 (seed=1781675157)
+Best run rejections: dist=0, rot=0, col=1379, dup=524
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.661   -0.285    2.133  Free      
+  1       0.661   -0.285    1.256  Free      
+  2       0.661   -0.285    2.303  Free      
+  3       0.327    0.087    2.303  Free      
+  4       0.327    0.087    1.308  Free      
+  5       0.456    0.570    1.308  Free      
+  6       0.586    1.052    1.308  Free      
+  7       0.586    1.052    2.356  Free      
+  8       0.287    1.352    2.356  Free      
+  9       0.010    1.629    2.356  Free      
+  10     -0.191    1.428    2.356  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 11 waypoints to /home/unitree-arka/Navigation_Dataset/waypoints/se2_waypoints_46.txt
+Saved navigation dataset for run_idx=46
+  Current poses       : /home/unitree-arka/Navigation_Dataset/Present_Robot_Pose/curr_pose_46.txt
+  Target poses        : /home/unitree-arka/Navigation_Dataset/Target_Pose/local_target_pose_46.txt
+  Local obstacle info : /home/unitree-arka/Navigation_Dataset/Local_Obstacle_Info/local_obs_46.txt
+  Local goal info     : /home/unitree-arka/Navigation_Dataset/Local_Goal_Info/local_goal_info_46.txt
+  Planning time       : /home/unitree-arka/Navigation_Dataset/Timestep/plan_time_46.txt
+  Query config        : /home/unitree-arka/Navigation_Dataset/query/query_46.cfg
+
+=== Controls (10 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.0000      0.0000     -0.8769       1.0
+  1         0.0000      0.0000      1.0472       1.0
+  2         0.5000      0.0000      0.0000       1.0
+  3         0.0000      0.0000     -0.9950       1.0
+  4         0.5000      0.0000      0.0000       1.0
+  5         0.5000      0.0000      0.0000       1.0
+  6         0.0000      0.0000      1.0472       1.0
+  7         0.4235      0.0000      0.0000       1.0
+  8         0.3916      0.0000      0.0000       1.0
+  9         0.0000      0.2840      0.0000       1.0
+Wrote 10 controls to /home/unitree-arka/Navigation_Dataset/controls/controls_46.txt

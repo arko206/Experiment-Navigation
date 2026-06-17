@@ -1,0 +1,123 @@
+Loading config: planner.cfg
+Loading config: query.cfg
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.671, -0.279, 2.133)
+  Goal       : (0.191, 1.774, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(1.020, 0.683) th=3.045  L=0.250 W=0.350
+    [1] centre=(-0.181, 0.836) th=3.092  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+
+=== Executing 20 RRT search attempts ===
+New best goal cost found: 8.30408 (node 148) at iter 386
+New best goal cost found: 5.24078 (node 268) at iter 760
+  Run  0: cost =     5.2408 (seed=1781671486)
+New best goal cost found: 9.47933 (node 60) at iter 191
+  Run  1: cost =     9.4793 (seed=1781671487)
+New best goal cost found: 11.166 (node 95) at iter 294
+New best goal cost found: 10.4157 (node 113) at iter 339
+  Run  2: cost =    10.4157 (seed=1781671488)
+New best goal cost found: 11.1668 (node 202) at iter 581
+New best goal cost found: 10.894 (node 226) at iter 683
+New best goal cost found: 9.59163 (node 232) at iter 699
+New best goal cost found: 9.45576 (node 349) at iter 1129
+New best goal cost found: 9.33628 (node 470) at iter 1643
+  Run  3: cost =     9.3363 (seed=1781671489)
+New best goal cost found: 10.0116 (node 90) at iter 291
+New best goal cost found: 9.91299 (node 204) at iter 587
+  Run  4: cost =     9.9130 (seed=1781671490)
+New best goal cost found: 6.12979 (node 53) at iter 225
+  Run  5: cost =     6.1298 (seed=1781671491)
+New best goal cost found: 7.56501 (node 134) at iter 507
+New best goal cost found: 7.44165 (node 317) at iter 1038
+  Run  6: cost =     7.4417 (seed=1781671492)
+New best goal cost found: 7.99375 (node 153) at iter 406
+New best goal cost found: 6.92149 (node 558) at iter 1860
+  Run  7: cost =     6.9215 (seed=1781671493)
+New best goal cost found: 7.01046 (node 87) at iter 259
+New best goal cost found: 6.97585 (node 103) at iter 291
+New best goal cost found: 6.94079 (node 396) at iter 1251
+  Run  8: cost =     6.9408 (seed=1781671494)
+New best goal cost found: 10.1037 (node 238) at iter 712
+New best goal cost found: 9.93734 (node 255) at iter 786
+New best goal cost found: 8.36609 (node 303) at iter 934
+New best goal cost found: 8.01965 (node 420) at iter 1330
+New best goal cost found: 6.22375 (node 512) at iter 1658
+  Run  9: cost =     6.2238 (seed=1781671495)
+New best goal cost found: 6.04749 (node 46) at iter 128
+New best goal cost found: 5.86857 (node 64) at iter 170
+  Run 10: cost =     5.8686 (seed=1781671496)
+New best goal cost found: 6.71063 (node 99) at iter 228
+New best goal cost found: 6.58912 (node 255) at iter 671
+  Run 11: cost =     6.5891 (seed=1781671497)
+New best goal cost found: 5.54798 (node 36) at iter 58
+New best goal cost found: 5.0855 (node 64) at iter 124
+  Run 12: cost =     5.0855 (seed=1781671498)
+New best goal cost found: 6.57606 (node 159) at iter 390
+New best goal cost found: 6.23874 (node 199) at iter 494
+New best goal cost found: 5.56553 (node 245) at iter 643
+New best goal cost found: 4.89498 (node 615) at iter 1917
+  Run 13: cost =     4.8950 (seed=1781671499)
+New best goal cost found: 10.1145 (node 66) at iter 175
+New best goal cost found: 8.9996 (node 107) at iter 308
+  Run 14: cost =     8.9996 (seed=1781671500)
+New best goal cost found: 10.5385 (node 101) at iter 269
+New best goal cost found: 8.49678 (node 451) at iter 1367
+New best goal cost found: 8.42044 (node 453) at iter 1378
+  Run 15: cost =     8.4204 (seed=1781671501)
+New best goal cost found: 14.995 (node 320) at iter 1005
+New best goal cost found: 12.5286 (node 425) at iter 1412
+New best goal cost found: 9.82005 (node 450) at iter 1497
+New best goal cost found: 9.22885 (node 605) at iter 1975
+  Run 16: cost =     9.2289 (seed=1781671502)
+New best goal cost found: 8.19969 (node 44) at iter 67
+New best goal cost found: 8.04692 (node 63) at iter 129
+New best goal cost found: 7.19213 (node 332) at iter 1027
+New best goal cost found: 3.247 (node 378) at iter 1226
+  Run 17: cost =     3.2470 (seed=1781671503)
+New best goal cost found: 9.53564 (node 119) at iter 404
+New best goal cost found: 9.4056 (node 354) at iter 1207
+  Run 18: cost =     9.4056 (seed=1781671504)
+New best goal cost found: 8.48764 (node 52) at iter 151
+New best goal cost found: 7.55428 (node 183) at iter 470
+  Run 19: cost =     7.5543 (seed=1781671505)
+Best path found at iter 1226 in 0.007525 seconds within the winning RRT run.
+
+Globally best cost: 3.2470 (seed=1781671503)
+Best run rejections: dist=0, rot=0, col=1373, dup=546
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.671   -0.279    2.133  Free      
+  1       0.404    0.144    2.133  Free      
+  2       0.404    0.144    1.329  Free      
+  3       0.524    0.629    1.329  Free      
+  4       0.644    1.115    1.329  Free      
+  5       0.764    1.600    1.329  Free      
+  6       0.333    1.706    1.329  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 7 waypoints to /home/unitree-arka/Navigation_Dataset/waypoints/se2_waypoints_33.txt
+Saved navigation dataset for run_idx=33
+  Current poses       : /home/unitree-arka/Navigation_Dataset/Present_Robot_Pose/curr_pose_33.txt
+  Target poses        : /home/unitree-arka/Navigation_Dataset/Target_Pose/local_target_pose_33.txt
+  Local obstacle info : /home/unitree-arka/Navigation_Dataset/Local_Obstacle_Info/local_obs_33.txt
+  Local goal info     : /home/unitree-arka/Navigation_Dataset/Local_Goal_Info/local_goal_info_33.txt
+  Planning time       : /home/unitree-arka/Navigation_Dataset/Timestep/plan_time_33.txt
+  Query config        : /home/unitree-arka/Navigation_Dataset/query/query_33.cfg
+
+=== Controls (6 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.5000      0.0000      0.0000       1.0
+  1         0.0000      0.0000     -0.8038       1.0
+  2         0.5000      0.0000      0.0000       1.0
+  3         0.5000      0.0000      0.0000       1.0
+  4         0.5000      0.0000      0.0000       1.0
+  5         0.0000      0.4432      0.0000       1.0
+Wrote 6 controls to /home/unitree-arka/Navigation_Dataset/controls/controls_33.txt
