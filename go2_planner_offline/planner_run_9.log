@@ -1,0 +1,125 @@
+Loading config: planner.cfg
+Loading config: query.cfg
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.476, -0.199, 1.489)
+  Goal       : (0.975, 1.461, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(1.000, 0.535) th=-3.134  L=0.250 W=0.350
+    [1] centre=(-0.113, 0.875) th=3.107  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+
+=== Executing 20 RRT search attempts ===
+New best goal cost found: 4.0944 (node 39) at iter 70
+New best goal cost found: 3.90018 (node 67) at iter 159
+New best goal cost found: 3.88946 (node 415) at iter 1353
+New best goal cost found: 1.8232 (node 454) at iter 1470
+  Run  0: cost =     1.8232 (seed=1781577762)
+New best goal cost found: 3.26233 (node 17) at iter 27
+New best goal cost found: 2.55485 (node 76) at iter 159
+New best goal cost found: 2.44762 (node 240) at iter 641
+  Run  1: cost =     2.4476 (seed=1781577763)
+New best goal cost found: 2.67577 (node 15) at iter 20
+New best goal cost found: 2.59049 (node 274) at iter 853
+  Run  2: cost =     2.5905 (seed=1781577764)
+New best goal cost found: 3.71659 (node 23) at iter 48
+New best goal cost found: 2.88332 (node 28) at iter 53
+New best goal cost found: 2.78903 (node 40) at iter 72
+  Run  3: cost =     2.7890 (seed=1781577765)
+New best goal cost found: 2.89859 (node 7) at iter 8
+New best goal cost found: 2.85262 (node 18) at iter 25
+New best goal cost found: 2.82903 (node 23) at iter 40
+New best goal cost found: 1.84928 (node 32) at iter 59
+  Run  4: cost =     1.8493 (seed=1781577766)
+New best goal cost found: 2.98114 (node 18) at iter 21
+New best goal cost found: 1.87993 (node 63) at iter 114
+  Run  5: cost =     1.8799 (seed=1781577767)
+New best goal cost found: 3.04265 (node 11) at iter 28
+New best goal cost found: 2.6675 (node 276) at iter 901
+  Run  6: cost =     2.6675 (seed=1781577768)
+New best goal cost found: 5.69739 (node 20) at iter 34
+New best goal cost found: 3.48149 (node 26) at iter 43
+New best goal cost found: 3.28188 (node 260) at iter 855
+  Run  7: cost =     3.2819 (seed=1781577769)
+New best goal cost found: 9.37244 (node 43) at iter 134
+  Run  8: cost =     9.3724 (seed=1781577770)
+New best goal cost found: 2.71039 (node 7) at iter 6
+New best goal cost found: 2.54432 (node 27) at iter 69
+New best goal cost found: 2.52889 (node 102) at iter 297
+New best goal cost found: 2.06878 (node 554) at iter 1883
+  Run  9: cost =     2.0688 (seed=1781577771)
+New best goal cost found: 3.0472 (node 18) at iter 32
+New best goal cost found: 2.8327 (node 20) at iter 35
+New best goal cost found: 1.879 (node 389) at iter 1288
+  Run 10: cost =     1.8790 (seed=1781577772)
+New best goal cost found: 2.83242 (node 5) at iter 10
+New best goal cost found: 2.69007 (node 72) at iter 138
+  Run 11: cost =     2.6901 (seed=1781577773)
+New best goal cost found: 2.90465 (node 27) at iter 40
+  Run 12: cost =     2.9046 (seed=1781577774)
+New best goal cost found: 3.5472 (node 20) at iter 47
+New best goal cost found: 3.46259 (node 37) at iter 75
+New best goal cost found: 3.44334 (node 56) at iter 115
+New best goal cost found: 3.39922 (node 166) at iter 499
+New best goal cost found: 2.63367 (node 201) at iter 614
+  Run 13: cost =     2.6337 (seed=1781577775)
+New best goal cost found: 5.4411 (node 27) at iter 50
+New best goal cost found: 5.37387 (node 35) at iter 78
+New best goal cost found: 5.27733 (node 69) at iter 144
+New best goal cost found: 4.07218 (node 202) at iter 538
+  Run 14: cost =     4.0722 (seed=1781577776)
+New best goal cost found: 4.45718 (node 18) at iter 32
+New best goal cost found: 3.50558 (node 41) at iter 90
+  Run 15: cost =     3.5056 (seed=1781577777)
+New best goal cost found: 3.79912 (node 32) at iter 54
+New best goal cost found: 3.55801 (node 72) at iter 152
+New best goal cost found: 2.11349 (node 279) at iter 825
+  Run 16: cost =     2.1135 (seed=1781577778)
+New best goal cost found: 3.97775 (node 9) at iter 23
+New best goal cost found: 3.00547 (node 13) at iter 36
+New best goal cost found: 2.9219 (node 38) at iter 87
+New best goal cost found: 1.89851 (node 86) at iter 221
+New best goal cost found: 1.83187 (node 532) at iter 1841
+  Run 17: cost =     1.8319 (seed=1781577779)
+New best goal cost found: 3.5472 (node 22) at iter 31
+New best goal cost found: 3.27503 (node 32) at iter 53
+New best goal cost found: 3.04156 (node 73) at iter 151
+New best goal cost found: 3.0159 (node 322) at iter 1101
+  Run 18: cost =     3.0159 (seed=1781577780)
+New best goal cost found: 3.0472 (node 14) at iter 29
+New best goal cost found: 2.89465 (node 26) at iter 48
+  Run 19: cost =     2.8947 (seed=1781577781)
+Best path found at iter 1470 in 0.010660 seconds within the winning RRT run.
+
+Globally best cost: 1.8232 (seed=1781577762)
+Best run rejections: dist=0, rot=0, col=1335, dup=589
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.476   -0.199    1.489  Free      
+  1       0.517    0.299    1.489  Free      
+  2       0.558    0.798    1.489  Free      
+  3       0.598    1.296    1.489  Free      
+  4       0.920    1.270    1.489  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 5 waypoints to se2_waypoints_9.txt
+Saved navigation dataset for run_idx=9
+  Current poses       : /home/unitree-arka/Navigation_Dataset/Present_Robot_Pose/curr_pose_9.txt
+  Target poses        : /home/unitree-arka/Navigation_Dataset/Target_Pose/local_target_pose_9.txt
+  Local obstacle info : /home/unitree-arka/Navigation_Dataset/Local_Obstacle_Info/local_obs_9.txt
+  Local goal info     : /home/unitree-arka/Navigation_Dataset/Local_Goal_Info/local_goal_info_9.txt
+  Planning time       : /home/unitree-arka/Navigation_Dataset/Timestep/plan_time_9.txt
+
+=== Controls (4 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.5000      0.0000      0.0000       1.0
+  1         0.5000      0.0000      0.0000       1.0
+  2         0.5000      0.0000      0.0000       1.0
+  3         0.0000     -0.3232      0.0000       1.0
+Wrote 4 controls to controls_9.txt

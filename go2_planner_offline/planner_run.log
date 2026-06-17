@@ -1,0 +1,96 @@
+Loading config: planner.cfg
+Loading config: query.cfg
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.425, -0.128, 1.578)
+  Goal       : (0.703, 1.329, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(1.178, 0.668) th=3.091  L=0.250 W=0.350
+    [1] centre=(-0.112, 0.871) th=3.112  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+
+=== Executing 20 RRT search attempts ===
+New best goal cost found: 3.3528 (node 21) at iter 28
+New best goal cost found: 3.29167 (node 24) at iter 40
+  Run  0: cost =     3.2917 (seed=1781325125)
+New best goal cost found: 1.8178 (node 6) at iter 19
+New best goal cost found: 1.59485 (node 7) at iter 20
+  Run  1: cost =     1.5948 (seed=1781325126)
+New best goal cost found: 2.27849 (node 46) at iter 112
+  Run  2: cost =     2.2785 (seed=1781325127)
+New best goal cost found: 3.46441 (node 9) at iter 28
+New best goal cost found: 3.30794 (node 43) at iter 113
+  Run  3: cost =     3.3079 (seed=1781325128)
+New best goal cost found: 3.49897 (node 34) at iter 79
+  Run  4: cost =     3.4990 (seed=1781325129)
+New best goal cost found: 5.92554 (node 18) at iter 43
+New best goal cost found: 5.9196 (node 31) at iter 86
+New best goal cost found: 4.66826 (node 191) at iter 542
+  Run  5: cost =     4.6683 (seed=1781325130)
+New best goal cost found: 5.25398 (node 27) at iter 46
+New best goal cost found: 5.15471 (node 42) at iter 103
+New best goal cost found: 1.61965 (node 48) at iter 112
+  Run  6: cost =     1.6196 (seed=1781325131)
+New best goal cost found: 7.96741 (node 42) at iter 96
+New best goal cost found: 4.0342 (node 62) at iter 131
+  Run  7: cost =     4.0342 (seed=1781325132)
+New best goal cost found: 4.54601 (node 24) at iter 32
+  Run  8: cost =     4.5460 (seed=1781325133)
+New best goal cost found: 10.0378 (node 52) at iter 116
+New best goal cost found: 6.11155 (node 58) at iter 134
+New best goal cost found: 5.06319 (node 136) at iter 343
+  Run  9: cost =     5.0632 (seed=1781325134)
+New best goal cost found: 2.43813 (node 31) at iter 67
+  Run 10: cost =     2.4381 (seed=1781325135)
+New best goal cost found: 3.53105 (node 15) at iter 37
+New best goal cost found: 3.44488 (node 59) at iter 162
+  Run 11: cost =     3.4449 (seed=1781325136)
+New best goal cost found: 3.71692 (node 58) at iter 151
+  Run 12: cost =     3.7169 (seed=1781325137)
+New best goal cost found: 1.80369 (node 6) at iter 14
+New best goal cost found: 1.75215 (node 11) at iter 32
+  Run 13: cost =     1.7521 (seed=1781325138)
+New best goal cost found: 3.6532 (node 18) at iter 51
+New best goal cost found: 3.61764 (node 27) at iter 77
+New best goal cost found: 3.47681 (node 60) at iter 170
+  Run 14: cost =     3.4768 (seed=1781325139)
+New best goal cost found: 6.15283 (node 67) at iter 157
+New best goal cost found: 5.50017 (node 116) at iter 248
+  Run 15: cost =     5.5002 (seed=1781325140)
+New best goal cost found: 4.76427 (node 9) at iter 26
+  Run 16: cost =     4.7643 (seed=1781325141)
+New best goal cost found: 4.92008 (node 16) at iter 28
+New best goal cost found: 4.8181 (node 26) at iter 41
+  Run 17: cost =     4.8181 (seed=1781325142)
+New best goal cost found: 3.41538 (node 31) at iter 81
+  Run 18: cost =     3.4154 (seed=1781325143)
+New best goal cost found: 6.16454 (node 70) at iter 260
+New best goal cost found: 6.13971 (node 424) at iter 1378
+  Run 19: cost =     6.1397 (seed=1781325144)
+
+Globally best cost: 1.5948 (seed=1781325126)
+Best run rejections: dist=0, rot=0, col=1307, dup=638
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.425   -0.128    1.578  Free      
+  1       0.743   -0.125    1.578  Free      
+  2       0.739    0.375    1.578  Free      
+  3       0.736    0.875    1.578  Free      
+  4       0.734    1.152    1.578  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 5 waypoints to se2_waypoints.txt
+
+=== Controls (4 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.0000     -0.3178      0.0000       1.0
+  1         0.5000      0.0000      0.0000       1.0
+  2         0.5000      0.0000      0.0000       1.0
+  3         0.2771      0.0000      0.0000       1.0
+Wrote 4 controls to controls.txt
