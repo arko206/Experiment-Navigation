@@ -104,18 +104,6 @@ def load_local_goal_info(filepath):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--run_idx", type=int, required=True,
@@ -124,20 +112,39 @@ def main():
 
     run_idx = args.run_idx
 
-    dataset_root = os.path.join(os.path.expanduser("~"), "Navigation_Dataset")
+    dataset_root = os.path.join(
+        os.path.expanduser("~"),
+        "Navigation_Dataset"
+    )
 
-    waypoints_dir = os.path.join(dataset_root, "waypoints")
-    planning_tree_dir = os.path.join(dataset_root, "planning_tree")
-    plot_dir = os.path.join(dataset_root, "Planned_Path_Plot")
+    diffusion_root = os.path.join(
+        dataset_root,
+        "Diffusion_Policy_Navigation"
+    )
+
+    waypoints_dir = os.path.join(
+        diffusion_root,
+        "Diffusion_waypoints"
+    )
+
+    planning_tree_dir = os.path.join(
+        diffusion_root,
+        "Diffusion_planning_tree"
+    )
+
+    plot_dir = os.path.join(
+        diffusion_root,
+        "Diffusion_planned_path_plot"
+    )
 
     waypoints_file = os.path.join(
         waypoints_dir,
-        f"se2_waypoints_{run_idx}.txt"
+        f"Diffusion_se2_waypoints_{run_idx}.txt"
     )
 
     rrt_tree_file = os.path.join(
         planning_tree_dir,
-        f"rrt_tree_{run_idx}.txt"
+        f"Diffusion_rrt_tree_{run_idx}.txt"
     )
 
     os.makedirs(dataset_root, exist_ok=True)
@@ -145,19 +152,19 @@ def main():
 
     output_plot_file = os.path.join(
         plot_dir,
-        f"planned_path_plot_{run_idx}.png"
+        f"Diffusion_planned_path_plot_{run_idx}.png"
     )
 
     local_obs_file = os.path.join(
-        dataset_root,
-        "Local_Obstacle_Info",
-        f"local_obs_{run_idx}.txt"
-    )
+        diffusion_root,
+        "Diffusion_Local_Obstacle_Info",
+        f"diff_local_obs_{run_idx}.txt"
+        )
 
     local_goal_file = os.path.join(
-        dataset_root,
-        "Local_Goal_Info",
-        f"local_goal_info_{run_idx}.txt"
+        diffusion_root,
+        "Diffusion_Local_Goal_Info",
+        f"diff_local_goal_info_{run_idx}.txt"
     )
     
     cfg1 = load_config('planner.cfg')
