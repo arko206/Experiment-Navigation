@@ -678,51 +678,94 @@ Insert accepted states into the RRT
 
 ### Local target construction
 
-Given the nearest tree state and a sampled position, the planner first determines the heading required to face the sample.
-
-The local target is then constructed using one of two motion modes.
+Given the nearest RRT-tree state and a sampled position, the planner determines the heading required for the robot to face the sampled position. It then constructs either a pure rotational target or a pure forward-translational target.
 
 #### Rotation mode
 
-When the heading error exceeds the configured minimum rotation threshold, the local target changes only the heading:
+When the angular error exceeds the configured minimum rotation threshold, the local target changes only the robot heading:
 
-```text
-(x, y, theta)
-    ->
-(x, y, theta + delta_theta)
-```
+[
+(x_{\mathrm{world}},y_{\mathrm{world}},\theta)
+\rightarrow
+(x_{\mathrm{world}},y_{\mathrm{world}},
+\theta+\Delta\theta).
+]
+
+Therefore, the robot-frame action is constrained as:
+
+[
+\Delta x_{\mathrm{robot}}=0,
+\qquad
+\Delta y_{\mathrm{robot}}=0.
+]
 
 #### Translation mode
 
-When the robot is sufficiently aligned with the sample, the local target moves along the current robot heading:
+When the robot is sufficiently aligned with the sampled position, the local target specifies forward motion along the robot's current body-frame (x)-axis.
 
-```text
-(x, y, theta)
-    ->
-(x + d cos(theta), y + d sin(theta), theta)
-```
+The robot-frame displacement is:
 
-In the current experiments, reverse motion is disabled. Therefore, translation targets correspond to forward motion.
+[
+\Delta x_{\mathrm{robot}}=d,
+\qquad
+\Delta y_{\mathrm{robot}}=0,
+\qquad
+\Delta\theta=0.
+]
+
+Although the lateral robot-frame displacement is zero, the forward displacement must be transformed into the world coordinate frame. The corresponding world-frame displacement is:
+
+[
+\Delta x_{\mathrm{world}}=d\cos\theta,
+]
+
+[
+\Delta y_{\mathrm{world}}=d\sin\theta.
+]
+
+Therefore, the updated world-frame pose is:
+
+[
+(x_{\mathrm{world}},y_{\mathrm{world}},\theta)
+\rightarrow
+(x_{\mathrm{world}}+d\cos\theta,
+y_{\mathrm{world}}+d\sin\theta,
+\theta).
+]
+
+Thus, (\Delta y_{\mathrm{robot}}=0) does not imply that the world-frame (y)-coordinate remains constant. It means only that the robot does not move laterally relative to its own body frame.
+
+In the current experiments, reverse motion is disabled, so (d>0) and all accepted translational targets correspond to forward robot motion.
 
 ### Motion-primitive enforcement
 
-The diffusion model predicts all three action components. However, the planner enforces the motion mode selected by the local-target constructor.
+The diffusion policy predicts the complete robot-frame action:
+
+[
+(\Delta x_{\mathrm{robot}},
+\Delta y_{\mathrm{robot}},
+\Delta\theta).
+]
+
+However, the planner enforces the motion mode selected by the local-target constructor.
 
 For a rotation target:
 
-```text
-delta_x_robot = 0
-delta_y_robot = 0
-```
+[
+\Delta x_{\mathrm{robot}}=0,
+\qquad
+\Delta y_{\mathrm{robot}}=0.
+]
 
 For a translation target:
 
-```text
-delta_y_robot = 0
-delta_theta   = 0
-```
+[
+\Delta y_{\mathrm{robot}}=0,
+\qquad
+\Delta\theta=0.
+]
 
-This produces separate rotation and forward-translation primitives compatible with the current Unitree Go2 control interface.
+The remaining forward component, (\Delta x_{\mathrm{robot}}), is transformed into world-frame (x)- and (y)-displacements according to the current robot heading. This produces separate in-place rotation and forward-translation primitives compatible with the current Unitree Go2 control interface.
 
 ### Robot-frame to world-frame conversion
 
