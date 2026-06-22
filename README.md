@@ -381,3 +381,717 @@ local obstacle information.
 ```
 
 This formulation allows the diffusion model to approximate local planner behaviour while preserving the geometric feasibility information provided by the RRT-generated trajectories.
+
+
+# Diffusion-Policy Navigation Extension
+
+The repository additionally contains a learned local-motion planner that integrates a one-step conditional diffusion policy with the existing SE(2) RRT framework. The objective of this extension is to investigate whether a diffusion model trained on collision-free RRT transitions can subsequently be used as the local steering mechanism inside an RRT planner.
+
+The implementation is divided into three principal components:
+
+1. offline training of a one-step diffusion policy;
+2. persistent Python-based diffusion inference;
+3. C++ diffusion-guided RRT planning and collision validation.
+
+## Updated Repository Structure
+
+```text
+Experiment-Navigation/
+├── go2_planner_offline/
+│   ├── planner.cc
+│   ├── Diffusion_Planner.cc
+│   ├── planner.cfg
+│   ├── query.cfg
+│   └── visualize.py
+│
+└── Navigation_Dataset/
+    ├── waypoints/
+    ├── controls/
+    ├── Present_Robot_Pose/
+    ├── Target_Pose/
+    ├── Local_Obstacle_Info/
+    ├── Local_Goal_Info/
+    ├── planning_tree/
+    ├── planner_logs/
+    ├── Planned_Path_Plot/
+    ├── Timestep/
+    ├── query/
+    │
+    └── Diffusion_Policy_Navigation/
+        ├── Train_DM_navg.py
+        ├── Eval_DM_navg.py
+        ├── visualize.py
+        ├── navigation_normalization_stats.npz
+        ├── checkpoints/
+        │   └── diffusion_navigation_one_step.ckpt
+        │
+        ├── Diffusion_Curr_Robot_Pose/
+        ├── Diffusion_Target_Pose/
+        ├── Diffusion_Local_Obstacle_Info/
+        ├── Diffusion_Local_Goal_Info/
+        ├── Diffusion_Timestep/
+        ├── Diffusion_Query/
+        ├── Diffusion_controls/
+        │   ├── Diffusion_controls_<run_idx>.txt
+        │   └── Current_Diffusion_Control.txt
+        ├── Diffusion_waypoints/
+        ├── Diffusion_planning_tree/
+        ├── Diffusion_planner_logs/
+        └── Diffusion_planned_path_plot/
+```
+
+The Python virtual environment `nav_diff_env/` is intentionally excluded from the repository and must be created locally.
+
+---
+
+## Diffusion-Policy Training
+
+The diffusion-policy training script is located at:
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/Train_DM_navg.py
+```
+
+The script trains a one-step conditional diffusion model using the local transitions extracted from the original RRT dataset.
+
+For each planner edge, the model receives a 12-dimensional observation:
+
+```text
+[
+    current_x,
+    current_y,
+    current_theta,
+
+    local_target_x,
+    local_target_y,
+    local_target_theta,
+
+    obstacle_0_rel_x,
+    obstacle_0_rel_y,
+    obstacle_0_distance,
+
+    obstacle_1_rel_x,
+    obstacle_1_rel_y,
+    obstacle_1_distance
+]
+```
+
+The corresponding three-dimensional action is:
+
+```text
+[
+    delta_x_robot,
+    delta_y_robot,
+    delta_theta
+]
+```
+
+Here, `delta_x_robot` and `delta_y_robot` describe translational displacement in the current robot frame, while `delta_theta` describes the change in robot heading.
+
+The current implementation assumes exactly two obstacles because the trained observation vector contains two obstacle feature triplets.
+
+### Coordinate transformation
+
+For a robot pose
+
+```text
+q = (x, y, theta)
+```
+
+and an obstacle centre
+
+```text
+o = (x_obs, y_obs),
+```
+
+the relative obstacle position in the robot frame is computed as:
+
+```text
+rel_x =  cos(theta) (x_obs - x) + sin(theta) (y_obs - y)
+
+rel_y = -sin(theta) (x_obs - x) + cos(theta) (y_obs - y)
+```
+
+The obstacle-centre distance is:
+
+```text
+rel_distance = sqrt(rel_x^2 + rel_y^2)
+```
+
+The same feature construction is used during dataset generation, model training, and online diffusion inference.
+
+### Diffusion training objective
+
+The policy is implemented using a conditional one-dimensional U-Net. The normalized observation vector is supplied as global conditioning to the network.
+
+During training:
+
+1. a clean normalized action is sampled from the training dataset;
+2. Gaussian noise is sampled;
+3. a diffusion timestep is selected;
+4. the DDPM forward process adds noise to the clean action;
+5. the conditional U-Net predicts the added noise;
+6. the network is optimized using mean-squared noise-prediction error.
+
+The training loss is:
+
+```text
+L_diffusion =
+E[ || epsilon - epsilon_theta(a_t, t, observation) ||^2 ]
+```
+
+where:
+
+* `epsilon` is the sampled Gaussian noise;
+* `a_t` is the noisy action at diffusion timestep `t`;
+* `epsilon_theta` is the noise predicted by the conditional U-Net.
+
+An exponential moving average of the model parameters is maintained during training. The EMA parameters are used to generate the final inference checkpoint.
+
+The trained checkpoint is stored at:
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/checkpoints/
+diffusion_navigation_one_step.ckpt
+```
+
+The observation and action normalization statistics are stored at:
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+navigation_normalization_stats.npz
+```
+
+---
+
+## Persistent Diffusion Inference Server
+
+The inference script is located at:
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/Eval_DM_navg.py
+```
+
+This script loads:
+
+```text
+checkpoints/diffusion_navigation_one_step.ckpt
+navigation_normalization_stats.npz
+```
+
+and remains active as a persistent stdin/stdout inference server.
+
+The model is loaded only once at planner startup. This avoids repeatedly loading the checkpoint for every RRT extension.
+
+The communication protocol is:
+
+```text
+C++ planner
+    |
+    | 12 floating-point observation values
+    v
+Eval_DM_navg.py
+    |
+    | 3 floating-point action values
+    v
+C++ planner
+```
+
+After loading the checkpoint, the Python process prints:
+
+```text
+READY
+```
+
+The C++ planner waits for this handshake before beginning the RRT search.
+
+For each request, the Python process:
+
+1. validates the 12-dimensional observation;
+2. normalizes the observation using the saved training statistics;
+3. initializes the action from Gaussian noise;
+4. performs the reverse DDPM denoising process;
+5. extracts the one-step three-dimensional action;
+6. converts the normalized action back to physical robot-frame displacement;
+7. returns:
+
+```text
+delta_x_robot delta_y_robot delta_theta
+```
+
+The current inference configuration uses:
+
+```text
+observation horizon = 1
+prediction horizon  = 1
+observation size    = 12
+action size         = 3
+```
+
+The inference server supports CUDA and CPU execution, although GPU inference is used in the current planner experiments.
+
+---
+
+## Diffusion-Guided RRT Planner
+
+The diffusion-guided planner is implemented in:
+
+```text
+go2_planner_offline/Diffusion_Planner.cc
+```
+
+Unlike the original planner, which uses an explicitly programmed steering procedure, `Diffusion_Planner.cc` uses the trained diffusion policy to generate candidate local transitions.
+
+The global search remains an RRT search in SE(2):
+
+```text
+q = (x, y, theta).
+```
+
+The diffusion model does not replace global planning or collision checking. Instead, it provides a learned local steering distribution inside the RRT expansion procedure.
+
+### High-level planning sequence
+
+For each RRT iteration, the planner performs the following operations:
+
+```text
+Sample an SE(2) configuration
+        |
+Find the nearest RRT node
+        |
+Construct a local rotation or translation target
+        |
+Build the 12-dimensional diffusion observation
+        |
+Request a robot-frame action from Eval_DM_navg.py
+        |
+Transform the action into a world-frame candidate pose
+        |
+Validate motion primitive consistency
+        |
+Perform continuous collision checking
+        |
+Check progress toward the sampled configuration
+        |
+Insert accepted states into the RRT
+```
+
+### Local target construction
+
+Given the nearest tree state and a sampled position, the planner first determines the heading required to face the sample.
+
+The local target is then constructed using one of two motion modes.
+
+#### Rotation mode
+
+When the heading error exceeds the configured minimum rotation threshold, the local target changes only the heading:
+
+```text
+(x, y, theta)
+    ->
+(x, y, theta + delta_theta)
+```
+
+#### Translation mode
+
+When the robot is sufficiently aligned with the sample, the local target moves along the current robot heading:
+
+```text
+(x, y, theta)
+    ->
+(x + d cos(theta), y + d sin(theta), theta)
+```
+
+In the current experiments, reverse motion is disabled. Therefore, translation targets correspond to forward motion.
+
+### Motion-primitive enforcement
+
+The diffusion model predicts all three action components. However, the planner enforces the motion mode selected by the local-target constructor.
+
+For a rotation target:
+
+```text
+delta_x_robot = 0
+delta_y_robot = 0
+```
+
+For a translation target:
+
+```text
+delta_y_robot = 0
+delta_theta   = 0
+```
+
+This produces separate rotation and forward-translation primitives compatible with the current Unitree Go2 control interface.
+
+### Robot-frame to world-frame conversion
+
+The diffusion model predicts translation in the robot frame. The C++ planner converts it to the world frame using:
+
+```text
+delta_x_world =
+    cos(theta) delta_x_robot
+    - sin(theta) delta_y_robot
+
+delta_y_world =
+    sin(theta) delta_x_robot
+    + cos(theta) delta_y_robot
+```
+
+The candidate SE(2) pose is then:
+
+```text
+x_new     = x + delta_x_world
+y_new     = y + delta_y_world
+theta_new = wrap(theta + delta_theta)
+```
+
+### Iterative diffusion rollout
+
+A single RRT extension can contain multiple consecutive diffusion-policy calls:
+
+```text
+q_near
+    -> q_1
+    -> q_2
+    -> ...
+    -> q_K
+```
+
+The current experimental configuration permits up to 12 diffusion-generated transitions within one extension.
+
+The rollout terminates early when:
+
+* the sampled position is reached within the configured tolerance;
+* the local target cannot be constructed;
+* diffusion inference fails;
+* the generated pose is in collision;
+* the generated motion fails to make sufficient positional progress;
+* the generated rotation fails to reduce the angular error.
+
+This allows one RRT expansion to generate a short sequence of learned local motions while maintaining geometric validation after every transition.
+
+---
+
+## Collision Checking
+
+The robot is represented by a rectangular footprint:
+
+```text
+robot = (x, y, theta, length, width)
+```
+
+Each obstacle is also represented as an oriented rectangle. The obstacle dimensions are enlarged by the configured safety margin before collision checking.
+
+Rectangle intersection is evaluated using the Separating Axis Theorem.
+
+The planner checks both final configurations and intermediate motion.
+
+### Translation checking
+
+A translation segment is discretized at approximately one-centimetre intervals. The rectangular robot footprint is checked against every inflated obstacle at each intermediate position.
+
+### Rotation checking
+
+An in-place rotation is interpolated at approximately ten-degree angular intervals. Collision checking is performed for every intermediate robot orientation.
+
+Consequently, acceptance of a diffusion-generated state requires more than checking only the generated endpoint. The complete rotation or translation primitive must remain collision-free.
+
+---
+
+## Progress Validation
+
+Collision-free diffusion predictions are accepted only when they make progress toward the current RRT sample.
+
+For translation, the Euclidean distance to the sampled position must decrease.
+
+For rotation, the angular error relative to the local target heading must decrease.
+
+Predictions that move away from the sampled state or rotate in the wrong direction terminate the current diffusion rollout.
+
+---
+
+## RRT Search and Best-Path Selection
+
+The planner uses a two-dimensional KD-tree for efficient nearest-neighbour lookup while evaluating candidate states using a weighted SE(2) distance:
+
+```text
+d(q_i, q_j) =
+sqrt((x_i - x_j)^2 + (y_i - y_j)^2)
++ w_theta |wrap(theta_i - theta_j)|
+```
+
+Each accepted node stores:
+
+```text
+SE(2) configuration
+parent index
+accumulated path cost
+```
+
+When a node enters the goal-tolerance region, its accumulated path cost is compared with the best goal-reaching cost found so far.
+
+The current experimental build performs multiple independent RRT attempts and retains the lowest-cost successful path. The random seed associated with the winning tree is stored for reproducibility.
+
+The goal heading is currently treated as unconstrained. A path succeeds when its final position lies inside the configured goal-tolerance region.
+
+---
+
+## Control Generation
+
+After selecting the best waypoint path, consecutive SE(2) states are converted into robot velocity commands:
+
+```text
+vx, vy, vtheta
+```
+
+For a planned displacement over a control duration `step_time`:
+
+```text
+vx     = forward displacement / step_time
+vy     = lateral displacement / step_time
+vtheta = angular displacement / step_time
+```
+
+The current diffusion planner primarily generates:
+
+```text
+forward translation:
+vx > 0, vy = 0, vtheta = 0
+
+in-place rotation:
+vx = 0, vy = 0, vtheta != 0
+```
+
+The indexed control sequence is stored as:
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_controls/Diffusion_controls_<run_idx>.txt
+```
+
+The same newest sequence is also written to:
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_controls/Current_Diffusion_Control.txt
+```
+
+`Current_Diffusion_Control.txt` is overwritten after each successful planning run and provides a fixed path for communication with the robot-side control program.
+
+The indexed file is retained for experiment history and reproducibility.
+
+---
+
+## Diffusion-Planner Output Files
+
+For a run with index `<run_idx>`, the diffusion planner generates the following files.
+
+### Planned SE(2) waypoints
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_waypoints/Diffusion_se2_waypoints_<run_idx>.txt
+```
+
+### Velocity controls
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_controls/Diffusion_controls_<run_idx>.txt
+```
+
+### Latest robot-facing control file
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_controls/Current_Diffusion_Control.txt
+```
+
+### RRT search tree
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_planning_tree/Diffusion_rrt_tree_<run_idx>.txt
+```
+
+### Current robot poses
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_Curr_Robot_Pose/diff_curr_pose_<run_idx>.txt
+```
+
+### Local target poses
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_Target_Pose/diff_local_target_pose_<run_idx>.txt
+```
+
+### Robot-relative obstacle features
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_Local_Obstacle_Info/diff_local_obs_<run_idx>.txt
+```
+
+### Robot-relative goal features
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_Local_Goal_Info/diff_local_goal_info_<run_idx>.txt
+```
+
+### Planning time
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_Timestep/diff_plan_time_<run_idx>.txt
+```
+
+### Query configuration snapshot
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_Query/diff_query_<run_idx>.cfg
+```
+
+---
+
+## SE(2) Diffusion-Planner Visualizations
+
+The diffusion-planner visualization script reads the indexed waypoint path, RRT tree, local obstacle features, local goal features, and planning configuration.
+
+Generated figures are stored in:
+
+```text
+Navigation_Dataset/Diffusion_Policy_Navigation/
+Diffusion_planned_path_plot/
+```
+
+The filename convention is:
+
+```text
+Diffusion_planned_path_plot_<run_idx>.png
+```
+
+Each plot may include:
+
+* the SE(2) planning workspace;
+* the start and goal positions;
+* the goal-tolerance region;
+* oriented rectangular obstacles;
+* inflated obstacle safety regions;
+* the RRT search tree;
+* the selected diffusion-guided path;
+* rectangular robot footprints along the path;
+* waypoint heading arrows;
+* robot-to-obstacle relative-information lines;
+* robot-to-goal relative-information lines.
+
+These plots provide a qualitative representation of how the learned local policy expands the global RRT tree and how the selected path interacts with the geometric constraints of the environment.
+
+---
+
+## Building and Running the Diffusion Planner
+
+Compile the planner using:
+
+```bash
+cd go2_planner_offline
+
+g++ -std=c++17 -O2 -Wall -Wextra -Wpedantic \
+    Diffusion_Planner.cc \
+    -o diffusion_planner_exec
+```
+
+Run the planner using:
+
+```bash
+./diffusion_planner_exec \
+    --config planner.cfg \
+    --run_idx <run_idx>
+```
+
+Example:
+
+```bash
+./diffusion_planner_exec \
+    --config planner.cfg \
+    --run_idx 1003
+```
+
+Generate the corresponding visualization using:
+
+```bash
+python3 visualize.py --run_idx 1003
+```
+
+The diffusion inference process is launched automatically by the C++ planner.
+
+---
+
+## Current Workstation Paths
+
+The current implementation expects the inference environment and model files under:
+
+```text
+/home/unitree-arka/Navigation_Dataset/
+Diffusion_Policy_Navigation/
+```
+
+In particular:
+
+```text
+Python interpreter:
+nav_diff_env/bin/python
+
+Inference script:
+Eval_DM_navg.py
+
+Checkpoint:
+checkpoints/diffusion_navigation_one_step.ckpt
+
+Normalization statistics:
+navigation_normalization_stats.npz
+```
+
+These absolute paths are currently specified in `Diffusion_Planner.cc`. They should be replaced by configuration-file entries or command-line arguments in a future portability update.
+
+---
+
+## Experimental Status
+
+The current system demonstrates an end-to-end pipeline in which:
+
+1. an RRT planner generates collision-free local transitions;
+2. a conditional diffusion policy is trained to imitate those transitions;
+3. the trained policy is inserted back into an RRT planner as a learned steering mechanism;
+4. each learned transition is validated using geometric collision and progress checks;
+5. the resulting waypoint sequence is converted into Unitree Go2 velocity controls.
+
+Selected planned control sequences have been executed on the Unitree Go2 in obstacle-layout experiments. These executions provide preliminary evidence that the generated motion primitives can be transferred to the physical platform.
+
+However, the current execution pipeline remains primarily open loop. The planner assumes that the physical robot reaches the predicted SE(2) waypoint after applying each velocity command for the specified duration. Tracking error, foot-placement drift, localization error, and model mismatch are not yet incorporated into the planner state.
+
+Future work will integrate AprilTag-based robot-pose estimation so that execution can be corrected using measured robot states. This will support closed-loop waypoint tracking, deviation detection, safer operation near obstacles, and replanning from the robot's actual pose.
+
+---
+
+## Research Objective
+
+The diffusion-guided planner investigates the following question:
+
+> Can a diffusion policy trained on collision-free local RRT transitions provide an effective learned steering distribution for sampling-based SE(2) motion planning?
+
+The classical RRT dataset provides geometrically feasible demonstrations. The diffusion model learns the local transition distribution, while the global RRT structure retains:
+
+* random exploration;
+* nearest-neighbour expansion;
+* collision validation;
+* goal-region checking;
+* parent-based path reconstruction;
+* best-path selection.
+
+This separation allows the learned policy to propose local motions without independently determining global feasibility. The planner therefore combines the generative flexibility of diffusion models with explicit geometric validation from a sampling-based motion planner.
