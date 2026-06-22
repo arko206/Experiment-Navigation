@@ -5,3 +5,5 @@ Navigation_Dataset/Diffusion_Policy_Navigation/nav_diff_env/
 # Python-generated files
 __pycache__/
 *.py[cod]
+**/__pycache__/
+*.pyc
