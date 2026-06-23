@@ -1,0 +1,79 @@
+Loading navigation diffusion model on cuda.
+number of parameters: 3.710467e+06
+Navigation diffusion server is ready.
+Loading config: planner.cfg
+Loading config: query.cfg
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.611, -0.228, 1.722)
+  Goal       : (0.606, 1.497, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(0.981, 0.471) th=-0.091  L=0.250 W=0.350
+    [1] centre=(-0.200, 0.836) th=-1.591  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+Python diffusion server handshake completed.
+
+=== Executing 1 RRT search attempts ===
+New best goal cost found: 7.31783 (node 24) at iter 11
+New best goal cost found: 7.11648 (node 40) at iter 21
+  Run  0: cost =     7.1165 (seed=307)
+Best path found at iter 21 in 11.637425 seconds within the winning RRT run.
+
+Globally best cost: 7.1165 (seed=307)
+Best run rejections: dist=0, rot=0, col=43, dup=12
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.611   -0.228    1.722  Free      
+  1       0.536    0.262    1.722  Free      
+  2       0.461    0.753    1.722  Free      
+  3       0.387    1.241    1.722  Free      
+  4       0.315    1.716    1.722  Free      
+  5       0.315    1.716    2.314  Free      
+  6       0.315    1.716    1.701  Free      
+  7       0.315    1.716    1.015  Free      
+  8       0.315    1.716    0.237  Free      
+  9       0.354    1.726    0.237  Free      
+  10      0.419    1.742    0.237  Free      
+  11      0.441    1.747    0.237  Free      
+  12      0.486    1.758    0.237  Free      
+  13      0.557    1.775    0.237  Free      
+  14      0.653    1.798    0.237  Free      
+  15      0.653    1.798   -0.595  Free      
+  16      0.653    1.798   -1.062  Free      
+  17      0.653    1.798   -1.755  Free      
+  18      0.638    1.718   -1.755  Free      
+  19      0.636    1.706   -1.755  Free      
+  20      0.628    1.661   -1.755  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 21 waypoints to /home/unitree-arka/Navigation_Dataset/Diffusion_Policy_Navigation/Diffusion_waypoints/Diffusion_se2_waypoints_4003.txt
+
+=== Controls (20 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.4963      0.0000      0.0000       1.0
+  1         0.4964      0.0000      0.0000       1.0
+  2         0.4933      0.0000      0.0000       1.0
+  3         0.4811      0.0000      0.0000       1.0
+  4         0.0000      0.0000      0.5921       1.0
+  5         0.0000      0.0000     -0.6132       1.0
+  6         0.0000      0.0000     -0.6855       1.0
+  7         0.0000      0.0000     -0.7786       1.0
+  8         0.0400      0.0000      0.0000       1.0
+  9         0.0676      0.0000      0.0000       1.0
+  10        0.0227      0.0000      0.0000       1.0
+  11        0.0456      0.0000      0.0000       1.0
+  12        0.0735      0.0000      0.0000       1.0
+  13        0.0991      0.0000      0.0000       1.0
+  14        0.0000      0.0000     -0.8314       1.0
+  15        0.0000      0.0000     -0.4672       1.0
+  16        0.0000      0.0000     -0.6931       1.0
+  17        0.0817      0.0000      0.0000       1.0
+  18        0.0122      0.0000      0.0000       1.0
+  19        0.0458      0.0000      0.0000       1.0
+Wrote 20 controls to /home/unitree-arka/Navigation_Dataset/Diffusion_Policy_Navigation/Diffusion_controls/Diffusion_controls_4003.txt

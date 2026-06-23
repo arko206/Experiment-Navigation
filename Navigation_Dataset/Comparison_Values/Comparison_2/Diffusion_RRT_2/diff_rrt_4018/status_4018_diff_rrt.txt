@@ -1,0 +1,6 @@
+run_idx=4018
+seed=809
+success=0
+process_exit_code=0
+path_length_m=nan
+wall_runtime_s=38.703490

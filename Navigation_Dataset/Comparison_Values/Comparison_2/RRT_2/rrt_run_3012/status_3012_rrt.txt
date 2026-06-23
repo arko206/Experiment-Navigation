@@ -1,0 +1,6 @@
+run_idx=3012
+seed=211
+success=1
+process_exit_code=0
+path_length_m=2.499999
+wall_runtime_s=0.010180

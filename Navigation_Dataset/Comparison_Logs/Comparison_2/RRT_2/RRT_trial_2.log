@@ -1,0 +1,56 @@
+Loading config: planner.cfg
+Loading config: query.cfg
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.750, -0.248, 1.443)
+  Goal       : (0.236, 1.618, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(1.006, 0.510) th=-0.106  L=0.250 W=0.350
+    [1] centre=(-0.159, 0.874) th=-2.274  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+
+=== Executing 1 RRT search attempts ===
+New best goal cost found: 8.35555 (node 48) at iter 133
+  Run  0: cost =     8.3556 (seed=211)
+Best path found at iter 133 in 0.000473 seconds within the winning RRT run.
+
+Globally best cost: 8.3556 (seed=211)
+Best run rejections: dist=0, rot=0, col=641, dup=725
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.750   -0.248    1.443  Free      
+  1       0.750   -0.248    2.490  Free      
+  2       0.352    0.055    2.490  Free      
+  3       0.352    0.055    1.443  Free      
+  4       0.416    0.551    1.443  Free      
+  5       0.416    0.551    2.274  Free      
+  6       0.416    0.551    1.227  Free      
+  7       0.584    1.022    1.227  Free      
+  8       0.753    1.492    1.227  Free      
+  9       0.753    1.492    2.274  Free      
+  10      0.753    1.492    3.110  Free      
+  11      0.253    1.508    3.110  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 12 waypoints to /home/unitree-arka/Navigation_Dataset/waypoints/se2_waypoints_3012.txt
+
+=== Controls (11 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.0000      0.0000      1.0472       1.0
+  1         0.5000      0.0000      0.0000       1.0
+  2         0.0000      0.0000     -1.0472       1.0
+  3         0.5000      0.0000      0.0000       1.0
+  4         0.0000      0.0000      0.8307       1.0
+  5         0.0000      0.0000     -1.0472       1.0
+  6         0.5000      0.0000      0.0000       1.0
+  7         0.5000      0.0000      0.0000       1.0
+  8         0.0000      0.0000      1.0472       1.0
+  9         0.0000      0.0000      0.8361       1.0
+  10        0.5000      0.0000      0.0000       1.0
+Wrote 11 controls to /home/unitree-arka/Navigation_Dataset/controls/controls_3012.txt
