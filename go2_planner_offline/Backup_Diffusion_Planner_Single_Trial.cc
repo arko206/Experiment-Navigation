@@ -171,7 +171,7 @@ struct PlannerConfig
     // File paths
     std::string waypoints_out = "se2_waypoints.txt";
     std::string controls_out = "controls.txt";
-    std::string query_file = "query_1.cfg";
+    std::string query_file = "query.cfg";
 
     // Poses
     Configuration start;
@@ -500,38 +500,6 @@ struct DiffusionAction
     double dx_robot = 0.0;
     double dy_robot = 0.0;
     double dtheta = 0.0;
-};
-
-// Machine-readable diagnostics collected during one diffusion-RRT attempt.
-struct PlannerDiagnostics
-{
-    long diffusion_action_requests = 0;
-    long accepted_rollout_nodes = 0;
-
-    // One candidate node is counted when a diffusion action has been
-    // converted to a world-frame pose and enters collision validation.
-    long candidate_nodes_collision_checked = 0;
-
-    // Counts individual endpoint, rotation-sweep, and segment checks.
-    long collision_check_calls = 0;
-
-    long endpoint_collision_rejections = 0;
-    long rotation_collision_rejections = 0;
-    long segment_collision_rejections = 0;
-
-    long angular_no_progress_rejections = 0;
-    long positional_no_progress_rejections = 0;
-
-    long local_target_failures = 0;
-    long observation_failures = 0;
-    long inference_failures = 0;
-    long invalid_nearest_failures = 0;
-
-    long successful_extensions = 0;
-    long failed_extensions = 0;
-    long sample_reached_stops = 0;
-
-    long duplicate_nodes_found = 0;
 };
 
 // ============================================================
@@ -1172,8 +1140,7 @@ static bool diffusion_action_to_world_pose(
     const PlannerConfig &cfg,
     const Configuration &current_pose,
     const DiffusionAction &action,
-    Configuration &candidate_pose,
-    PlannerDiagnostics &diagnostics)
+    Configuration &candidate_pose)
 {
     // Convert predicted robot-frame translation to world frame.
     double cos_theta = std::cos(current_pose.theta);
@@ -1199,18 +1166,13 @@ static bool diffusion_action_to_world_pose(
             current_pose.theta +
             action.dtheta);
 
-    // Count this generated candidate as a node that entered collision checking.
-    diagnostics.candidate_nodes_collision_checked++;
-
     // Check the generated final pose first.
-    diagnostics.collision_check_calls++;
     if (!is_free(
             candidate_pose.x,
             candidate_pose.y,
             candidate_pose.theta,
             cfg))
     {
-        diagnostics.endpoint_collision_rejections++;
         return false;
     }
 
@@ -1218,7 +1180,6 @@ static bool diffusion_action_to_world_pose(
     // at the current position.
     if (std::fabs(action.dtheta) > 1e-6)
     {
-        diagnostics.collision_check_calls++;
         if (!rotation_free(
                 current_pose.x,
                 current_pose.y,
@@ -1226,7 +1187,6 @@ static bool diffusion_action_to_world_pose(
                 candidate_pose.theta,
                 cfg))
         {
-            diagnostics.rotation_collision_rejections++;
             return false;
         }
     }
@@ -1240,7 +1200,6 @@ static bool diffusion_action_to_world_pose(
 
     if (translation_distance > 1e-6)
     {
-        diagnostics.collision_check_calls++;
         if (!segment_free(
                 current_pose.x,
                 current_pose.y,
@@ -1249,7 +1208,6 @@ static bool diffusion_action_to_world_pose(
                 candidate_pose.theta,
                 cfg))
         {
-            diagnostics.segment_collision_rejections++;
             return false;
         }
     }
@@ -1264,8 +1222,7 @@ static bool extend(
     const Configuration &r_sample,
     bool sampling_goal,
     int iter,
-    RotTranslateEdge &out_best_cand,
-    PlannerDiagnostics &diagnostics)
+    RotTranslateEdge &out_best_cand)
 {
     (void)sampling_goal;
     (void)iter;
@@ -1273,8 +1230,6 @@ static bool extend(
     if (best_idx < 0 ||
         best_idx >= static_cast<int>(tree.size()))
     {
-        diagnostics.invalid_nearest_failures++;
-        diagnostics.failed_extensions++;
         return false;
     }
 
@@ -1294,10 +1249,7 @@ static bool extend(
 
         // The fixed random sample has been reached closely enough.
         if (previous_sample_distance <= DIFF_SAMPLE_TOL)
-        {
-            diagnostics.sample_reached_stops++;
             break;
-        }
 
         Configuration local_target;
         LocalTargetMode target_mode;
@@ -1309,7 +1261,6 @@ static bool extend(
                 local_target,
                 target_mode))
         {
-            diagnostics.local_target_failures++;
             break;
         }
 
@@ -1321,20 +1272,17 @@ static bool extend(
                 local_target,
                 observation))
         {
-            diagnostics.observation_failures++;
             break;
         }
 
         DiffusionAction predicted_action;
 
-        diagnostics.diffusion_action_requests++;
         if (!request_diffusion_action(
                 current_pose,
                 local_target,
                 observation,
                 predicted_action))
         {
-            diagnostics.inference_failures++;
             break;
         }
 
@@ -1369,8 +1317,7 @@ static bool extend(
                 cfg,
                 current_pose,
                 predicted_action,
-                candidate_pose,
-                diagnostics))
+                candidate_pose))
         {
             break;
         }
@@ -1396,7 +1343,6 @@ static bool extend(
                 previous_angle_error -
                     DIFF_MIN_ANG_PROGRESS)
             {
-                diagnostics.angular_no_progress_rejections++;
                 break;
             }
         }
@@ -1411,23 +1357,18 @@ static bool extend(
                 previous_sample_distance -
                     DIFF_MIN_POS_PROGRESS)
             {
-                diagnostics.positional_no_progress_rejections++;
                 break;
             }
         }
         //--- the line stores each successful generated pose----///
         out_best_cand.rollout.push_back(
             candidate_pose);
-        diagnostics.accepted_rollout_nodes++;
 
         current_pose = candidate_pose;
     }
     // if no collision-free rollouts are obtained from diffusion policy----///
     if (out_best_cand.rollout.empty())
-    {
-        diagnostics.failed_extensions++;
         return false;
-    }
 
     out_best_cand.end =
         out_best_cand.rollout.back();
@@ -1438,7 +1379,6 @@ static bool extend(
     out_best_cand.eval_dist =
         out_best_cand.end.distance(r_sample);
 
-    diagnostics.successful_extensions++;
     return true;
 }
 
@@ -1631,8 +1571,6 @@ struct RRTResult {
     std::vector<RRTNode> tree;
     unsigned int seed;
     long rej_dist = 0, rej_rot = 0, rej_col = 0, rej_dup = 0;
-    long tree_nodes_generated = 0;
-    PlannerDiagnostics diagnostics;
 
     // Time taken within this RRT run to find the best goal-reaching path
     double time_to_best_goal_sec = -1.0;
@@ -1701,8 +1639,7 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
     // (6) rej_rot: rejected due to rotation constraints
     // (7) rej_col: rejected due to collision
     // (8) rej_dup: rejected because a duplicate or near-duplicate node was attempted
-    long rej_dist = 0, rej_rot = 0, rej_dup = 0;
-    PlannerDiagnostics diagnostics;
+    long rej_dist = 0, rej_rot = 0, rej_col = 0, rej_dup = 0;
 
     //--(9)This inserts the root of the tree.
 
@@ -1776,15 +1713,7 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
 
             //--So this is the node from which the planner tries to extend.
             if (near_idx != -1) {
-                found = extend(
-                    cfg,
-                    tree,
-                    near_idx,
-                    r_sample,
-                    sampling_goal,
-                    iter,
-                    cand,
-                    diagnostics);
+                found = extend(cfg, tree, near_idx, r_sample, sampling_goal, iter, cand);
             }
         }
         //-- This is the heart of the motion-generation logic.--//
@@ -1922,23 +1851,14 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
         }
         else
         {
-            // The detailed rejection category has already been recorded
-            // inside PlannerDiagnostics. Do not classify every failed
-            // extension as a collision.
+            rej_col++;
         }
     }
 
-    diagnostics.duplicate_nodes_found = rej_dup;
-
     result.rej_dist = rej_dist;
     result.rej_rot = rej_rot;
-    result.rej_col =
-        diagnostics.endpoint_collision_rejections +
-        diagnostics.rotation_collision_rejections +
-        diagnostics.segment_collision_rejections;
+    result.rej_col = rej_col;
     result.rej_dup = rej_dup;
-    result.tree_nodes_generated = static_cast<long>(tree.size());
-    result.diagnostics = diagnostics;
 
     if (goal_idx != -1)
     {
@@ -1961,139 +1881,6 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
     }
 
     return result;
-}
-
-
-static long total_collision_rejections(
-    const PlannerDiagnostics &diagnostics)
-{
-    return diagnostics.endpoint_collision_rejections +
-           diagnostics.rotation_collision_rejections +
-           diagnostics.segment_collision_rejections;
-}
-
-static std::string dominant_extension_failure(
-    const PlannerDiagnostics &diagnostics)
-{
-    std::vector<std::pair<long, std::string>> reasons = {
-        {total_collision_rejections(diagnostics), "collision_rejection"},
-        {diagnostics.angular_no_progress_rejections,
-         "angular_no_progress"},
-        {diagnostics.positional_no_progress_rejections,
-         "positional_no_progress"},
-        {diagnostics.local_target_failures,
-         "local_target_construction_failure"},
-        {diagnostics.observation_failures,
-         "observation_construction_failure"},
-        {diagnostics.inference_failures,
-         "diffusion_inference_failure"},
-        {diagnostics.invalid_nearest_failures,
-         "invalid_nearest_node"}};
-
-    const auto best = std::max_element(
-        reasons.begin(),
-        reasons.end(),
-        [](const auto &lhs, const auto &rhs)
-        {
-            return lhs.first < rhs.first;
-        });
-
-    if (best == reasons.end() || best->first == 0)
-        return "iteration_budget_exhausted_without_dominant_rejection";
-
-    return best->second;
-}
-
-static void print_machine_readable_diagnostics(
-    const RRTResult &result)
-{
-    const PlannerDiagnostics &d = result.diagnostics;
-
-    std::cout
-        << "DIAG_search_termination="
-        << (result.success
-                ? "goal_reached"
-                : "max_iterations_exhausted_without_goal")
-        << "\n";
-
-    std::cout
-        << "DIAG_primary_failure_reason="
-        << (result.success
-                ? "none"
-                : dominant_extension_failure(d))
-        << "\n";
-
-    std::cout
-        << "DIAG_duplicate_nodes_found="
-        << d.duplicate_nodes_found << "\n";
-
-    std::cout
-        << "DIAG_candidate_nodes_collision_checked="
-        << d.candidate_nodes_collision_checked << "\n";
-
-    std::cout
-        << "DIAG_collision_check_calls="
-        << d.collision_check_calls << "\n";
-
-    std::cout
-        << "DIAG_collision_rejections="
-        << total_collision_rejections(d) << "\n";
-
-    std::cout
-        << "DIAG_endpoint_collision_rejections="
-        << d.endpoint_collision_rejections << "\n";
-
-    std::cout
-        << "DIAG_rotation_collision_rejections="
-        << d.rotation_collision_rejections << "\n";
-
-    std::cout
-        << "DIAG_segment_collision_rejections="
-        << d.segment_collision_rejections << "\n";
-
-    std::cout
-        << "DIAG_angular_no_progress_rejections="
-        << d.angular_no_progress_rejections << "\n";
-
-    std::cout
-        << "DIAG_positional_no_progress_rejections="
-        << d.positional_no_progress_rejections << "\n";
-
-    std::cout
-        << "DIAG_local_target_failures="
-        << d.local_target_failures << "\n";
-
-    std::cout
-        << "DIAG_observation_failures="
-        << d.observation_failures << "\n";
-
-    std::cout
-        << "DIAG_inference_failures="
-        << d.inference_failures << "\n";
-
-    std::cout
-        << "DIAG_diffusion_action_requests="
-        << d.diffusion_action_requests << "\n";
-
-    std::cout
-        << "DIAG_accepted_rollout_nodes="
-        << d.accepted_rollout_nodes << "\n";
-
-    std::cout
-        << "DIAG_successful_extensions="
-        << d.successful_extensions << "\n";
-
-    std::cout
-        << "DIAG_failed_extensions="
-        << d.failed_extensions << "\n";
-
-    std::cout
-        << "DIAG_sample_reached_stops="
-        << d.sample_reached_stops << "\n";
-
-    std::cout
-        << "DIAG_tree_nodes_generated="
-        << result.tree_nodes_generated << "\n";
 }
 
 static bool write_rrt_tree(const std::vector<RRTNode> &tree, unsigned int seed, const std::string &filename)
@@ -2850,8 +2637,6 @@ int main(int argc, char **argv)
     for (int i = 0; i < num_runs; ++i) {
         unsigned int run_seed = (cfg.seed == -1) ? (final_seed + i) : (unsigned int)cfg.seed;
         RRTResult res = run_rrt(cfg, run_seed);
-        print_machine_readable_diagnostics(res);
-
         if (res.success) {
             std::printf("  Run %2d: cost = %10.4f (seed=%u)\n", i, res.cost, run_seed);
             if (res.cost < best_overall.cost) {

@@ -43,6 +43,28 @@ struct TrialResult
     double path_length_m = std::numeric_limits<double>::quiet_NaN();
     double wall_runtime_s = 0.0;
     int process_exit_code = -1;
+
+    std::string search_termination = "not_reported";
+    std::string primary_failure_reason = "not_reported";
+
+    long duplicate_nodes_found = -1;
+    long candidate_nodes_collision_checked = -1;
+    long collision_check_calls = -1;
+    long collision_rejections = -1;
+    long endpoint_collision_rejections = -1;
+    long rotation_collision_rejections = -1;
+    long segment_collision_rejections = -1;
+    long angular_no_progress_rejections = -1;
+    long positional_no_progress_rejections = -1;
+    long local_target_failures = -1;
+    long observation_failures = -1;
+    long inference_failures = -1;
+    long diffusion_action_requests = -1;
+    long accepted_rollout_nodes = -1;
+    long successful_extensions = -1;
+    long failed_extensions = -1;
+    long sample_reached_stops = -1;
+    long tree_nodes_generated = -1;
 };
 
 static void trim(std::string &text)
@@ -366,6 +388,106 @@ static bool write_local_goal_file(
     return true;
 }
 
+
+static bool parse_long_value(const std::string &text, long &value)
+{
+    try
+    {
+        std::size_t consumed = 0;
+        const long parsed = std::stol(text, &consumed);
+        if (consumed != text.size())
+            return false;
+        value = parsed;
+        return true;
+    }
+    catch (const std::exception &)
+    {
+        return false;
+    }
+}
+
+static void parse_planner_diagnostics(
+    const fs::path &log_file,
+    TrialResult &result)
+{
+    std::ifstream input(log_file);
+    if (!input)
+        return;
+
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (line.rfind("DIAG_", 0) != 0)
+            continue;
+
+        const std::size_t equals = line.find('=');
+        if (equals == std::string::npos)
+            continue;
+
+        const std::string key =
+            line.substr(5, equals - 5);
+        const std::string value =
+            line.substr(equals + 1);
+
+        if (key == "search_termination")
+            result.search_termination = value;
+        else if (key == "primary_failure_reason")
+            result.primary_failure_reason = value;
+        else if (key == "duplicate_nodes_found")
+            parse_long_value(value, result.duplicate_nodes_found);
+        else if (key == "candidate_nodes_collision_checked")
+            parse_long_value(
+                value,
+                result.candidate_nodes_collision_checked);
+        else if (key == "collision_check_calls")
+            parse_long_value(value, result.collision_check_calls);
+        else if (key == "collision_rejections")
+            parse_long_value(value, result.collision_rejections);
+        else if (key == "endpoint_collision_rejections")
+            parse_long_value(
+                value,
+                result.endpoint_collision_rejections);
+        else if (key == "rotation_collision_rejections")
+            parse_long_value(
+                value,
+                result.rotation_collision_rejections);
+        else if (key == "segment_collision_rejections")
+            parse_long_value(
+                value,
+                result.segment_collision_rejections);
+        else if (key == "angular_no_progress_rejections")
+            parse_long_value(
+                value,
+                result.angular_no_progress_rejections);
+        else if (key == "positional_no_progress_rejections")
+            parse_long_value(
+                value,
+                result.positional_no_progress_rejections);
+        else if (key == "local_target_failures")
+            parse_long_value(value, result.local_target_failures);
+        else if (key == "observation_failures")
+            parse_long_value(value, result.observation_failures);
+        else if (key == "inference_failures")
+            parse_long_value(value, result.inference_failures);
+        else if (key == "diffusion_action_requests")
+            parse_long_value(
+                value,
+                result.diffusion_action_requests);
+        else if (key == "accepted_rollout_nodes")
+            parse_long_value(
+                value,
+                result.accepted_rollout_nodes);
+        else if (key == "successful_extensions")
+            parse_long_value(value, result.successful_extensions);
+        else if (key == "failed_extensions")
+            parse_long_value(value, result.failed_extensions);
+        else if (key == "sample_reached_stops")
+            parse_long_value(value, result.sample_reached_stops);
+        else if (key == "tree_nodes_generated")
+            parse_long_value(value, result.tree_nodes_generated);
+    }
+}
+
 static bool compile_source(const fs::path &working_directory,
                            const fs::path &source,
                            const fs::path &executable)
@@ -428,6 +550,11 @@ static TrialResult run_one_planner(
 
     if (system_result != -1 && WIFEXITED(system_result))
         result.process_exit_code = WEXITSTATUS(system_result);
+
+    // Read the machine-readable DIAG_* lines written by the planner.
+    // This is done before the waypoint check so failed trials still
+    // retain their diagnostic information.
+    parse_planner_diagnostics(log_file, result);
 
     if (!is_nonempty_regular_file(waypoint_file))
         return result;
@@ -534,7 +661,47 @@ static bool archive_trial_outputs(
         status << result.path_length_m;
     else
         status << "nan";
-    status << "\nwall_runtime_s=" << result.wall_runtime_s << "\n";
+    status << "\nwall_runtime_s=" << result.wall_runtime_s << "\n"
+           << "search_termination="
+           << result.search_termination << "\n"
+           << "primary_failure_reason="
+           << result.primary_failure_reason << "\n"
+           << "duplicate_nodes_found="
+           << result.duplicate_nodes_found << "\n"
+           << "candidate_nodes_collision_checked="
+           << result.candidate_nodes_collision_checked << "\n"
+           << "collision_check_calls="
+           << result.collision_check_calls << "\n"
+           << "collision_rejections="
+           << result.collision_rejections << "\n"
+           << "endpoint_collision_rejections="
+           << result.endpoint_collision_rejections << "\n"
+           << "rotation_collision_rejections="
+           << result.rotation_collision_rejections << "\n"
+           << "segment_collision_rejections="
+           << result.segment_collision_rejections << "\n"
+           << "angular_no_progress_rejections="
+           << result.angular_no_progress_rejections << "\n"
+           << "positional_no_progress_rejections="
+           << result.positional_no_progress_rejections << "\n"
+           << "local_target_failures="
+           << result.local_target_failures << "\n"
+           << "observation_failures="
+           << result.observation_failures << "\n"
+           << "inference_failures="
+           << result.inference_failures << "\n"
+           << "diffusion_action_requests="
+           << result.diffusion_action_requests << "\n"
+           << "accepted_rollout_nodes="
+           << result.accepted_rollout_nodes << "\n"
+           << "successful_extensions="
+           << result.successful_extensions << "\n"
+           << "failed_extensions="
+           << result.failed_extensions << "\n"
+           << "sample_reached_stops="
+           << result.sample_reached_stops << "\n"
+           << "tree_nodes_generated="
+           << result.tree_nodes_generated << "\n";
     status.close();
 
     if (!result.success)
