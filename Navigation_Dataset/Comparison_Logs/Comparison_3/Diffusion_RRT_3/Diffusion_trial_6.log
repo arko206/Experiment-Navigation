@@ -1,0 +1,100 @@
+Loading navigation diffusion model on cuda.
+number of parameters: 3.710467e+06
+Navigation diffusion server is ready.
+Loading config: planner.cfg
+Loading config: query.cfg
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.750, -0.248, 1.443)
+  Goal       : (0.236, 1.618, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(1.006, 0.510) th=-0.106  L=0.250 W=0.350
+    [1] centre=(-0.159, 0.874) th=-2.274  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+Python diffusion server handshake completed.
+
+=== Executing 1 RRT search attempts ===
+New best goal cost found: 14.0722 (node 98) at iter 52
+DIAG_search_termination=goal_reached
+DIAG_primary_failure_reason=none
+DIAG_duplicate_nodes_found=6
+DIAG_candidate_nodes_collision_checked=268
+DIAG_collision_check_calls=490
+DIAG_collision_rejections=46
+DIAG_endpoint_collision_rejections=46
+DIAG_rotation_collision_rejections=0
+DIAG_segment_collision_rejections=0
+DIAG_angular_no_progress_rejections=28
+DIAG_positional_no_progress_rejections=11
+DIAG_local_target_failures=0
+DIAG_observation_failures=0
+DIAG_inference_failures=0
+DIAG_diffusion_action_requests=268
+DIAG_accepted_rollout_nodes=183
+DIAG_successful_extensions=69
+DIAG_failed_extensions=31
+DIAG_sample_reached_stops=15
+DIAG_tree_nodes_generated=178
+  Run  0: cost =    14.0722 (seed=601)
+Best path found at iter 52 in 32.053740 seconds within the winning RRT run.
+
+Globally best cost: 14.0722 (seed=601)
+Best run rejections: dist=0, rot=0, col=46, dup=6
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.750   -0.248    1.443  Free      
+  1       0.750   -0.248    2.469  Free      
+  2       0.363    0.060    2.469  Free      
+  3       0.363    0.060    3.035  Free      
+  4       0.363    0.060   -2.481  Free      
+  5       0.363    0.060   -2.708  Free      
+  6       0.363    0.060    2.678  Free      
+  7       0.363    0.060    1.651  Free      
+  8       0.327    0.507    1.651  Free      
+  9       0.327    0.507    0.676  Free      
+  10      0.327    0.507   -0.158  Free      
+  11      0.327    0.507   -0.462  Free      
+  12      0.327    0.507    0.131  Free      
+  13      0.327    0.507    0.911  Free      
+  14      0.629    0.897    0.911  Free      
+  15      0.930    1.285    0.911  Free      
+  16      1.186    1.615    0.911  Free      
+  17      1.186    1.615    1.731  Free      
+  18      1.186    1.615    2.678  Free      
+  19      1.186    1.615   -3.131  Free      
+  20      0.808    1.611   -3.131  Free      
+  21      0.405    1.607   -3.131  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 22 waypoints to /home/unitree-arka/Navigation_Dataset/Diffusion_Policy_Navigation/Diffusion_waypoints/Diffusion_se2_waypoints_4026.txt
+
+=== Controls (21 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.0000      0.0000      1.0258       1.0
+  1         0.4952      0.0000      0.0000       1.0
+  2         0.0000      0.0000      0.5662       1.0
+  3         0.0000      0.0000      0.7673       1.0
+  4         0.0000      0.0000     -0.2278       1.0
+  5         0.0000      0.0000     -0.8967       1.0
+  6         0.0000      0.0000     -1.0270       1.0
+  7         0.4477      0.0000      0.0000       1.0
+  8         0.0000      0.0000     -0.9751       1.0
+  9         0.0000      0.0000     -0.8340       1.0
+  10        0.0000      0.0000     -0.3043       1.0
+  11        0.0000      0.0000      0.5933       1.0
+  12        0.0000      0.0000      0.7803       1.0
+  13        0.4943      0.0000      0.0000       1.0
+  14        0.4904      0.0000      0.0000       1.0
+  15        0.4181      0.0000      0.0000       1.0
+  16        0.0000      0.0000      0.8200       1.0
+  17        0.0000      0.0000      0.9464       1.0
+  18        0.0000      0.0000      0.4741       1.0
+  19        0.3780      0.0000      0.0000       1.0
+  20        0.4033      0.0000      0.0000       1.0
+Wrote 21 controls to /home/unitree-arka/Navigation_Dataset/Diffusion_Policy_Navigation/Diffusion_controls/Diffusion_controls_4026.txt

@@ -1,0 +1,44 @@
+Loading navigation diffusion model on cuda.
+number of parameters: 3.710467e+06
+Navigation diffusion server is ready.
+Loading config: planner.cfg
+Loading config: query.cfg
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.750, -0.248, 1.443)
+  Goal       : (0.236, 1.618, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(1.006, 0.510) th=-0.106  L=0.250 W=0.350
+    [1] centre=(-0.159, 0.874) th=-2.274  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+Python diffusion server handshake completed.
+
+=== Executing 1 RRT search attempts ===
+DIAG_search_termination=max_iterations_exhausted_without_goal
+DIAG_primary_failure_reason=collision_rejection
+DIAG_duplicate_nodes_found=9
+DIAG_candidate_nodes_collision_checked=236
+DIAG_collision_check_calls=425
+DIAG_collision_rejections=48
+DIAG_endpoint_collision_rejections=47
+DIAG_rotation_collision_rejections=1
+DIAG_segment_collision_rejections=0
+DIAG_angular_no_progress_rejections=21
+DIAG_positional_no_progress_rejections=14
+DIAG_local_target_failures=0
+DIAG_observation_failures=0
+DIAG_inference_failures=0
+DIAG_diffusion_action_requests=236
+DIAG_accepted_rollout_nodes=153
+DIAG_successful_extensions=60
+DIAG_failed_extensions=40
+DIAG_sample_reached_stops=17
+DIAG_tree_nodes_generated=145
+  Run  0: failed
+RRT search failed to find a path in all attempts.
