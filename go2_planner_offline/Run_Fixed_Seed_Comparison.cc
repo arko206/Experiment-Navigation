@@ -139,19 +139,6 @@ static double compute_planar_path_length(const std::vector<Waypoint> &waypoints)
     return length;
 }
 
-static bool write_scalar_file(const fs::path &path, const std::string &value)
-{
-    std::ofstream output(path, std::ios::trunc);
-    if (!output)
-    {
-        std::cerr << "ERROR: cannot write " << path << "\n";
-        return false;
-    }
-
-    output << value << "\n";
-    return true;
-}
-
 static bool copy_file_if_present(const fs::path &source,
                                  const fs::path &destination)
 {
@@ -570,34 +557,6 @@ static TrialResult run_one_planner(
     return result;
 }
 
-static bool save_trial_metrics(const fs::path &success_file,
-                               const fs::path &path_length_file,
-                               const fs::path &runtime_file,
-                               const TrialResult &result)
-{
-    std::ostringstream length_stream;
-    if (result.success)
-    {
-        length_stream << std::fixed << std::setprecision(6)
-                      << result.path_length_m;
-    }
-    else
-    {
-        length_stream << "nan";
-    }
-
-    std::ostringstream runtime_stream;
-    runtime_stream << std::fixed << std::setprecision(6)
-                   << result.wall_runtime_s;
-
-    return write_scalar_file(success_file,
-                             result.success ? "1" : "0") &&
-           write_scalar_file(path_length_file,
-                             length_stream.str()) &&
-           write_scalar_file(runtime_file,
-                             runtime_stream.str());
-}
-
 static bool archive_trial_outputs(
     const fs::path &trial_directory,
     const std::string &file_suffix,
@@ -837,53 +796,6 @@ int main(int argc, char **argv)
         ("Diffusion_RRT_" +
          std::to_string(comparison_idx));
 
-    // Index all metric and log outputs as well, so a later
-    // comparison does not overwrite an earlier comparison.
-    const fs::path success_root =
-        dataset_root / "Success_Rate_Folder" /
-        comparison_name;
-    const fs::path path_length_root =
-        dataset_root / "Path-Length" /
-        comparison_name;
-    const fs::path runtime_root =
-        dataset_root / "Run_Time" /
-        comparison_name;
-    const fs::path logs_root =
-        dataset_root / "Comparison_Logs" /
-        comparison_name;
-
-    const fs::path rrt_success_dir =
-        success_root /
-        ("RRT_" + std::to_string(comparison_idx));
-    const fs::path diffusion_success_dir =
-        success_root /
-        ("Diffusion_RRT_" +
-         std::to_string(comparison_idx));
-
-    const fs::path rrt_length_dir =
-        path_length_root /
-        ("RRT_" + std::to_string(comparison_idx));
-    const fs::path diffusion_length_dir =
-        path_length_root /
-        ("Diffusion_RRT_" +
-         std::to_string(comparison_idx));
-
-    const fs::path rrt_runtime_dir =
-        runtime_root /
-        ("RRT_" + std::to_string(comparison_idx));
-    const fs::path diffusion_runtime_dir =
-        runtime_root /
-        ("Diffusion_RRT_" +
-         std::to_string(comparison_idx));
-
-    const fs::path rrt_log_dir =
-        logs_root /
-        ("RRT_" + std::to_string(comparison_idx));
-    const fs::path diffusion_log_dir =
-        logs_root /
-        ("Diffusion_RRT_" +
-         std::to_string(comparison_idx));
-
     if (fs::exists(comparison_directory) &&
         !overwrite_existing)
     {
@@ -899,24 +811,12 @@ int main(int argc, char **argv)
     {
         std::error_code ec;
         fs::remove_all(comparison_directory, ec);
-        fs::remove_all(success_root, ec);
-        fs::remove_all(path_length_root, ec);
-        fs::remove_all(runtime_root, ec);
-        fs::remove_all(logs_root, ec);
     }
 
     try
     {
         fs::create_directories(rrt_values_directory);
         fs::create_directories(diffusion_values_directory);
-        fs::create_directories(rrt_success_dir);
-        fs::create_directories(diffusion_success_dir);
-        fs::create_directories(rrt_length_dir);
-        fs::create_directories(diffusion_length_dir);
-        fs::create_directories(rrt_runtime_dir);
-        fs::create_directories(diffusion_runtime_dir);
-        fs::create_directories(rrt_log_dir);
-        fs::create_directories(diffusion_log_dir);
     }
     catch (const fs::filesystem_error &error)
     {
@@ -1033,15 +933,8 @@ int main(int argc, char **argv)
             ("Diffusion_controls_" +
              std::to_string(diffusion_run_idx) + ".txt");
 
-        const fs::path rrt_log_file =
-            rrt_log_dir /
-            ("RRT_trial_" +
-             std::to_string(trial) + ".log");
-        const fs::path diffusion_log_file =
-            diffusion_log_dir /
-            ("Diffusion_trial_" +
-             std::to_string(trial) + ".log");
-
+        // Keep each trial's log and archived outputs together inside
+        // its corresponding Comparison_Values run directory.
         const fs::path rrt_trial_directory =
             rrt_values_directory /
             ("rrt_run_" +
@@ -1050,6 +943,31 @@ int main(int argc, char **argv)
             diffusion_values_directory /
             ("diff_rrt_" +
              std::to_string(diffusion_run_idx));
+
+        try
+        {
+            fs::create_directories(rrt_trial_directory);
+            fs::create_directories(diffusion_trial_directory);
+        }
+        catch (const fs::filesystem_error &error)
+        {
+            std::cerr
+                << "ERROR: cannot create trial directories: "
+                << error.what() << "\n";
+            return 1;
+        }
+
+        const fs::path rrt_log_file =
+            rrt_trial_directory /
+            ("planner_log_" +
+             std::to_string(rrt_run_idx) +
+             "_rrt.log");
+
+        const fs::path diffusion_log_file =
+            diffusion_trial_directory /
+            ("planner_log_" +
+             std::to_string(diffusion_run_idx) +
+             "_diff_rrt.log");
 
         std::cout
             << "\n========================================\n"
@@ -1089,31 +1007,6 @@ int main(int argc, char **argv)
         if (diffusion_result.success)
             ++diffusion_success_count;
 
-        const std::string metric_suffix =
-            std::to_string(trial) + ".txt";
-
-        if (!save_trial_metrics(
-                rrt_success_dir /
-                    ("RRT_success_" + metric_suffix),
-                rrt_length_dir /
-                    ("RRT_path_length_" + metric_suffix),
-                rrt_runtime_dir /
-                    ("RRT_run_time_" + metric_suffix),
-                rrt_result) ||
-            !save_trial_metrics(
-                diffusion_success_dir /
-                    ("Diffusion_success_" + metric_suffix),
-                diffusion_length_dir /
-                    ("Diffusion_path_length_" +
-                     metric_suffix),
-                diffusion_runtime_dir /
-                    ("Diffusion_run_time_" +
-                     metric_suffix),
-                diffusion_result))
-        {
-            return 1;
-        }
-
         if (!archive_trial_outputs(
                 rrt_trial_directory,
                 "rrt",
@@ -1134,6 +1027,33 @@ int main(int argc, char **argv)
                 environment))
         {
             return 1;
+        }
+
+        // The single-trial planners first write indexed waypoint and
+        // control files to their normal dataset folders. After those
+        // files have been copied into Comparison_Values, remove only
+        // the temporary indexed copies to avoid duplicate storage.
+        {
+            const std::array<fs::path, 4> temporary_outputs = {
+                rrt_waypoint_file,
+                rrt_controls_file,
+                diffusion_waypoint_file,
+                diffusion_controls_file};
+
+            std::error_code cleanup_error;
+            for (const fs::path &temporary_output : temporary_outputs)
+            {
+                fs::remove(temporary_output, cleanup_error);
+
+                if (cleanup_error)
+                {
+                    std::cerr
+                        << "WARNING: could not remove temporary output "
+                        << temporary_output
+                        << ": " << cleanup_error.message() << "\n";
+                    cleanup_error.clear();
+                }
+            }
         }
 
         summary << comparison_idx << ','
