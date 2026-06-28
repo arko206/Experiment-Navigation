@@ -771,19 +771,11 @@ int main(int argc, char **argv)
         planner_directory /
         "Diffusion_Planner_Single_Trial.cc";
 
-    const fs::path lateral_diffusion_source =
-        planner_directory /
-        "Lateral_Diffu_Planner_Single_Trial.cc";
-
     const fs::path classical_executable =
         planner_directory / "planner_single_trial_exec";
     const fs::path diffusion_executable =
         planner_directory /
         "diffusion_planner_single_trial_exec";
-
-    const fs::path lateral_diffusion_executable =
-        planner_directory /
-        "lateral_diffusion_planner_single_trial_exec";
 
     const fs::path dataset_root =
         home / "Navigation_Dataset";
@@ -802,11 +794,6 @@ int main(int argc, char **argv)
     const fs::path diffusion_values_directory =
         comparison_directory /
         ("Diffusion_RRT_" +
-         std::to_string(comparison_idx));
-
-    const fs::path lateral_diffusion_values_directory =
-        comparison_directory /
-        ("Lateral_Diff_RRT_" +
          std::to_string(comparison_idx));
 
     if (fs::exists(comparison_directory) &&
@@ -830,7 +817,6 @@ int main(int argc, char **argv)
     {
         fs::create_directories(rrt_values_directory);
         fs::create_directories(diffusion_values_directory);
-        fs::create_directories(lateral_diffusion_values_directory);
     }
     catch (const fs::filesystem_error &error)
     {
@@ -841,7 +827,6 @@ int main(int argc, char **argv)
 
     if (!fs::exists(classical_source) ||
         !fs::exists(diffusion_source) ||
-        !fs::exists(lateral_diffusion_source) ||
         !fs::exists(planner_config))
     {
         std::cerr
@@ -881,10 +866,7 @@ int main(int argc, char **argv)
                         classical_executable) ||
         !compile_source(planner_directory,
                         diffusion_source,
-                        diffusion_executable) ||
-        !compile_source(planner_directory,
-                        lateral_diffusion_source,
-                        lateral_diffusion_executable))
+                        diffusion_executable))
     {
         return 1;
     }
@@ -907,21 +889,13 @@ int main(int argc, char **argv)
         << "rrt_run_idx,rrt_success,rrt_path_length_m,"
         << "rrt_wall_runtime_s,diffusion_run_idx,"
         << "diffusion_success,diffusion_path_length_m,"
-        << "diffusion_wall_runtime_s,"
-        << "lateral_diffusion_run_idx,"
-        << "lateral_diffusion_success,"
-        << "lateral_diffusion_path_length_m,"
-        << "lateral_diffusion_wall_runtime_s\n";
+        << "diffusion_wall_runtime_s\n";
 
     int rrt_success_count = 0;
     int diffusion_success_count = 0;
-    int lateral_diffusion_success_count = 0;
 
-    // Comparison 1 uses:
-    //   RRT             3001-3010
-    //   Diffusion RRT   4001-4010
-    //   Lateral Diff RRT 5001-5010
-    // Comparison 2 uses 3011-3020, 4011-4020 and 5011-5020, etc.
+    // Comparison 1 uses 3001-3010 and 4001-4010.
+    // Comparison 2 uses 3011-3020 and 4011-4020, etc.
     const int run_offset = (comparison_idx - 1) * 10;
 
     for (std::size_t index = 0;
@@ -936,8 +910,6 @@ int main(int argc, char **argv)
             3000 + run_offset + trial;
         const int diffusion_run_idx =
             4000 + run_offset + trial;
-        const int lateral_diffusion_run_idx =
-            5000 + run_offset + trial;
 
         const fs::path rrt_waypoint_file =
             dataset_root / "waypoints" /
@@ -961,23 +933,6 @@ int main(int argc, char **argv)
             ("Diffusion_controls_" +
              std::to_string(diffusion_run_idx) + ".txt");
 
-        // The lateral-diffusion planner uses the same indexed
-        // Diffusion_waypoints and Diffusion_controls output locations,
-        // but a separate 5000-series run index prevents collisions.
-        const fs::path lateral_diffusion_waypoint_file =
-            dataset_root /
-            "Diffusion_Policy_Navigation" /
-            "Diffusion_waypoints" /
-            ("Diffusion_se2_waypoints_" +
-             std::to_string(lateral_diffusion_run_idx) + ".txt");
-
-        const fs::path lateral_diffusion_controls_file =
-            dataset_root /
-            "Diffusion_Policy_Navigation" /
-            "Diffusion_controls" /
-            ("Diffusion_controls_" +
-             std::to_string(lateral_diffusion_run_idx) + ".txt");
-
         // Keep each trial's log and archived outputs together inside
         // its corresponding Comparison_Values run directory.
         const fs::path rrt_trial_directory =
@@ -989,16 +944,10 @@ int main(int argc, char **argv)
             ("diff_rrt_" +
              std::to_string(diffusion_run_idx));
 
-        const fs::path lateral_diffusion_trial_directory =
-            lateral_diffusion_values_directory /
-            ("lateral_diff_rrt_" +
-             std::to_string(lateral_diffusion_run_idx));
-
         try
         {
             fs::create_directories(rrt_trial_directory);
             fs::create_directories(diffusion_trial_directory);
-            fs::create_directories(lateral_diffusion_trial_directory);
         }
         catch (const fs::filesystem_error &error)
         {
@@ -1019,12 +968,6 @@ int main(int argc, char **argv)
             ("planner_log_" +
              std::to_string(diffusion_run_idx) +
              "_diff_rrt.log");
-
-        const fs::path lateral_diffusion_log_file =
-            lateral_diffusion_trial_directory /
-            ("planner_log_" +
-             std::to_string(lateral_diffusion_run_idx) +
-             "_lateral_diff_rrt.log");
 
         std::cout
             << "\n========================================\n"
@@ -1059,26 +1002,10 @@ int main(int argc, char **argv)
                 {diffusion_waypoint_file,
                  diffusion_controls_file});
 
-        std::cout
-            << "Running lateral diffusion-steering RRT ...\n";
-        const TrialResult lateral_diffusion_result =
-            run_one_planner(
-                planner_directory,
-                lateral_diffusion_executable,
-                planner_config,
-                seed,
-                lateral_diffusion_run_idx,
-                lateral_diffusion_waypoint_file,
-                lateral_diffusion_log_file,
-                {lateral_diffusion_waypoint_file,
-                 lateral_diffusion_controls_file});
-
         if (rrt_result.success)
             ++rrt_success_count;
         if (diffusion_result.success)
             ++diffusion_success_count;
-        if (lateral_diffusion_result.success)
-            ++lateral_diffusion_success_count;
 
         if (!archive_trial_outputs(
                 rrt_trial_directory,
@@ -1097,15 +1024,6 @@ int main(int argc, char **argv)
                 diffusion_result,
                 seed,
                 diffusion_run_idx,
-                environment) ||
-            !archive_trial_outputs(
-                lateral_diffusion_trial_directory,
-                "lateral_diff_rrt",
-                lateral_diffusion_controls_file,
-                lateral_diffusion_waypoint_file,
-                lateral_diffusion_result,
-                seed,
-                lateral_diffusion_run_idx,
                 environment))
         {
             return 1;
@@ -1116,13 +1034,11 @@ int main(int argc, char **argv)
         // files have been copied into Comparison_Values, remove only
         // the temporary indexed copies to avoid duplicate storage.
         {
-            const std::array<fs::path, 6> temporary_outputs = {
+            const std::array<fs::path, 4> temporary_outputs = {
                 rrt_waypoint_file,
                 rrt_controls_file,
                 diffusion_waypoint_file,
-                diffusion_controls_file,
-                lateral_diffusion_waypoint_file,
-                lateral_diffusion_controls_file};
+                diffusion_controls_file};
 
             std::error_code cleanup_error;
             for (const fs::path &temporary_output : temporary_outputs)
@@ -1175,24 +1091,7 @@ int main(int argc, char **argv)
 
         summary << ','
                 << std::fixed << std::setprecision(6)
-                << diffusion_result.wall_runtime_s << ','
-                << lateral_diffusion_run_idx << ','
-                << (lateral_diffusion_result.success ? 1 : 0)
-                << ',';
-
-        if (lateral_diffusion_result.success)
-        {
-            summary << std::fixed << std::setprecision(6)
-                    << lateral_diffusion_result.path_length_m;
-        }
-        else
-        {
-            summary << "nan";
-        }
-
-        summary << ','
-                << std::fixed << std::setprecision(6)
-                << lateral_diffusion_result.wall_runtime_s
+                << diffusion_result.wall_runtime_s
                 << '\n';
         summary.flush();
 
@@ -1220,19 +1119,6 @@ int main(int argc, char **argv)
         std::cout
             << ", runtime="
             << diffusion_result.wall_runtime_s << " s\n";
-
-        std::cout
-            << "Lateral Diffusion RRT: success="
-            << lateral_diffusion_result.success
-            << ", path_length=";
-        if (lateral_diffusion_result.success)
-            std::cout
-                << lateral_diffusion_result.path_length_m << " m";
-        else
-            std::cout << "nan";
-        std::cout
-            << ", runtime="
-            << lateral_diffusion_result.wall_runtime_s << " s\n";
     }
 
     summary.close();
@@ -1247,8 +1133,6 @@ int main(int argc, char **argv)
         << rrt_success_count << " / 10\n"
         << "Diffusion RRT successes : "
         << diffusion_success_count << " / 10\n"
-        << "Lateral Diff RRT success: "
-        << lateral_diffusion_success_count << " / 10\n"
         << "Comparison values       : "
         << comparison_directory << "\n"
         << "Archived query          : "

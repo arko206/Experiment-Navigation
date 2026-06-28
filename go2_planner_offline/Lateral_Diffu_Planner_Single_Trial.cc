@@ -64,7 +64,7 @@
 #define MAX_ITERS 100
 #define AOX_RUNS 1
 #define GOAL_BIAS_PERCENT 0
-#define LATERAL_BIAS_PERCENT 0
+#define LATERAL_BIAS_PERCENT 10
 #define ROT_ERR 10
 
 
@@ -521,6 +521,11 @@ struct PlannerDiagnostics
     long sample_reached_stops = 0;
 
     long duplicate_nodes_found = 0;
+    
+    //-- added for verifying lateral extensions-----///
+    long lateral_extension_requests = 0;
+    long successful_lateral_extensions = 0;
+    long failed_lateral_extensions = 0;
 };
 
 // ============================================================
@@ -938,11 +943,12 @@ static PythonDiffusionBridge diffusion_python_process;
 
 
 
-
+//----changed to Lateral Motion-----//
 enum class LocalTargetMode
 {
     Rotation,
-    Translation
+    Translation,
+    Sideways
 };
 
 ///---- The Function added to provide local target to Diffusion Policy-----///
@@ -1075,6 +1081,67 @@ static bool build_local_target(
 }
 
 ////---- end of implementing the function------////
+
+///--- building local target for lateral motion-----//
+static bool build_lateral_local_target(
+    const Configuration &current_pose,
+    const Configuration &fixed_lateral_target,
+    double lateral_sign,
+    Configuration &local_target,
+    LocalTargetMode &mode)
+{
+    // Remaining displacement to the fixed lateral target
+    // in the world frame.
+    const double dx_world =
+        fixed_lateral_target.x -
+        current_pose.x;
+
+    const double dy_world =
+        fixed_lateral_target.y -
+        current_pose.y;
+
+    const double distance_to_target =
+        std::sqrt(
+            dx_world * dx_world +
+            dy_world * dy_world);
+
+    // The fixed lateral target has already been reached.
+    if (distance_to_target <= DIFF_SAMPLE_TOL)
+    {
+        return false;
+    }
+
+    // Limit the next lateral target distance.
+    const double bounded_lateral_step =
+        std::min(
+            distance_to_target,
+            static_cast<double>(MAX_V));
+
+    // Left:  theta + pi/2
+    // Right: theta - pi/2
+    const double lateral_heading =
+        current_pose.theta +
+        lateral_sign * (M_PI / 2.0);
+
+    // Construct the local target directly in the world frame.
+    local_target.x =
+        current_pose.x +
+        bounded_lateral_step *
+            std::cos(lateral_heading);
+
+    local_target.y =
+        current_pose.y +
+        bounded_lateral_step *
+            std::sin(lateral_heading);
+
+    // Pure lateral motion preserves the robot heading.
+    local_target.theta =
+        current_pose.theta;
+
+    mode = LocalTargetMode::Sideways;
+
+    return true;
+}
 
 
 ///--- constructing the exact 12-dimensional observation for diffusion policy ------////
@@ -1327,19 +1394,7 @@ static bool extend(
             break;
         }
 
-        // std::cout
-        //     << "[Diffusion raw action]"
-        //     << " mode="
-        //     << (target_mode == LocalTargetMode::Rotation
-        //             ? "Rotation"
-        //             : "Translation")
-        //     << " dx_robot=" << predicted_action.dx_robot
-        //     << " dy_robot=" << predicted_action.dy_robot
-        //     << " dtheta=" << predicted_action.dtheta
-        //     << "\n";
-
-
-
+      
         // Preserve the pure motion primitive selected by build_local_target().
         if (target_mode == LocalTargetMode::Rotation)
         {
@@ -1418,9 +1473,181 @@ static bool extend(
         return false;
     }
 
+ 
+
     diagnostics.successful_extensions++;
     return true;
 }
+
+///-----Lateral Extension Function----------------------//////
+static bool extend_lateral(
+    const PlannerConfig &cfg,
+    const std::vector<RRTNode> &tree,
+    int best_idx,
+    RotTranslateEdge &out_best_cand,
+    PlannerDiagnostics &diagnostics)
+{
+    if (best_idx < 0 ||
+        best_idx >= static_cast<int>(tree.size()))
+    {
+        diagnostics.invalid_nearest_failures++;
+        diagnostics.failed_extensions++;
+        return false;
+    }
+
+    out_best_cand.rollout.clear();
+ 
+    const Configuration start_pose =
+        tree[best_idx].point;
+
+    // Random lateral distance in [MIN_DIST, MAX_V].
+    const double requested_lateral_distance =
+        MIN_DIST +
+        (static_cast<double>(rand()) / RAND_MAX) *
+            (MAX_V - MIN_DIST);
+
+    // Positive robot-frame y = left.
+    // Negative robot-frame y = right.
+    const double lateral_sign =
+        (rand() % 2 == 0)
+            ? 1.0
+            : -1.0;
+
+
+    const double lateral_heading = start_pose.theta + (M_PI / 2.0) * lateral_sign;
+    Configuration fixed_lateral_target;
+
+    fixed_lateral_target.x =
+        start_pose.x +
+        std::cos(lateral_heading) *
+            requested_lateral_distance;
+
+    fixed_lateral_target.y =
+        start_pose.y +
+        std::sin(lateral_heading) *
+            requested_lateral_distance;
+
+    fixed_lateral_target.theta =
+        start_pose.theta;
+
+    Configuration current_pose =
+        start_pose;
+
+    for (int rollout_step = 0;
+         rollout_step < DIFF_MAX_ROLLOUT_STEPS;
+         ++rollout_step)
+    {
+        const double previous_target_distance =
+            current_pose.distance(
+                fixed_lateral_target,
+                {0, 1});
+
+        // Stop once the fixed lateral target has been reached.
+        if (previous_target_distance <= DIFF_SAMPLE_TOL)
+        {
+            diagnostics.sample_reached_stops++;
+            break;
+        }
+
+        Configuration local_target;
+        LocalTargetMode target_mode;
+
+        if (!build_lateral_local_target(
+                current_pose,
+                fixed_lateral_target,
+                lateral_sign,
+                local_target,
+                target_mode))
+        {
+            diagnostics.local_target_failures++;
+            break;
+        }
+
+        std::array<double, 12> observation;
+
+        if (!build_diffusion_observation(
+                cfg,
+                current_pose,
+                local_target,
+                observation))
+        {
+            diagnostics.observation_failures++;
+            break;
+        }
+
+        DiffusionAction predicted_action;
+
+        diagnostics.diffusion_action_requests++;
+
+        if (!request_diffusion_action(
+                current_pose,
+                local_target,
+                observation,
+                predicted_action))
+        {
+            diagnostics.inference_failures++;
+            break;
+        }
+
+        if (target_mode == LocalTargetMode::Sideways)
+        {
+
+            // Enforce a pure lateral Go2 motion primitive.
+            predicted_action.dx_robot = 0.0;
+            predicted_action.dtheta = 0.0;
+
+
+        }
+
+       
+        Configuration candidate_pose;
+
+        if (!diffusion_action_to_world_pose(
+                cfg,
+                current_pose,
+                predicted_action,
+                candidate_pose,
+                diagnostics))
+        {
+            break;
+        }
+
+        // The generated state must move closer to the fixed
+        // lateral target.
+        const double new_target_distance =
+            candidate_pose.distance(
+                fixed_lateral_target,
+                {0, 1});
+
+        if (new_target_distance >
+            previous_target_distance -
+                DIFF_MIN_POS_PROGRESS)
+        {
+            diagnostics.positional_no_progress_rejections++;
+            break;
+        }
+
+        out_best_cand.rollout.push_back(
+            candidate_pose);
+
+        diagnostics.accepted_rollout_nodes++;
+
+        current_pose =
+            candidate_pose;
+    }
+
+    if (out_best_cand.rollout.empty())
+    {
+        diagnostics.failed_extensions++;
+        return false;
+    }
+
+   
+
+    diagnostics.successful_extensions++;
+    return true;
+}
+
 
 
 static bool update_best_goal(const std::vector<RRTNode> &tree, int idx,
@@ -1577,7 +1804,6 @@ static Configuration sample(const PlannerConfig &cfg, int iter, int goal_bias_pe
 }
 
 
-
 struct RRTResult {
     bool success = false;
     double cost = 1e18;
@@ -1618,6 +1844,23 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
     Configuration::weight_theta = cfg.w_theta;
 
 
+    //-- tree
+
+    // --(a) Stores the actual RRT nodes.
+
+    //-- (b)Each RRTNode likely contains:
+
+    // -- (1) configuration point
+    //-- (2) parent index
+    //-- (3) accumulated path cost
+
+    //-- (4) So each node is a state:
+
+    // -- (a) qi=(xi,yi,θi)
+    //-- (b) with parent:parent(i)
+
+
+    //--This lets you reconstruct the final path by walking backward from goal to start.---//
 
     std::vector<RRTNode> tree;
     tree.reserve(MAX_ITERS);
@@ -1634,10 +1877,22 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
     int goal_idx = -1;
     double best_goal_cost = 1e18;
 
+ 
+    // (7) rej_col: rejected due to collision
+    // (8) rej_dup: rejected because a duplicate or near-duplicate node was attempted
     long rej_dup = 0;
     PlannerDiagnostics diagnostics;
 
-    
+    //--(9)This inserts the root of the tree.
+
+    ///Mathematically:
+
+    //--(i) V={qstart}
+    //-- (ii) with:
+
+    // --parent = −1 meaning no parent
+    // -- cost = 0
+    // --So initially the tree is:T0=({qstart},∅)
     add_node(tree, kd_nodes, kd_root, cfg.start, -1, 0.0, rej_dup);
 
     //-- (10) This repeats the grow-tree process up to MAX_ITERS.---//
@@ -1650,30 +1905,43 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
         //--(c) found = whether the extension was successful (collision-free, respects motion limits, etc.)--//
         bool found = false;
 
-        bool sampling_goal = false;
+        if (cfg.allow_lateral && (rand() % 100 < LATERAL_BIAS_PERCENT)) {
 
-        Configuration r_sample = sample(cfg, iter, GOAL_BIAS_PERCENT, sampling_goal);
+            diagnostics.lateral_extension_requests++;
 
-        //--sampling_goal records whether this sample was the goal-biased one.--//
-        near_idx = find_nearest(tree, kd_nodes, kd_root, r_sample, cfg, goal_idx);
+            near_idx = rand() % tree.size();
+            found = extend_lateral(cfg, tree, near_idx, cand, diagnostics);
 
-        //-- This finds the tree node closest to the sampled target.--//
 
-        // -- Mathematically:
+            //--- Added Here---//
+            if (found)
+                diagnostics.successful_lateral_extensions++;
+            else
+                diagnostics.failed_lateral_extensions++;
 
-        // -- qnear=arg⁡min⁡qi∈Vd(qi,qsample)
 
-        //--So this is the node from which the planner tries to extend.
-        if (near_idx != -1) {
-            found = extend(
-                cfg,
-                tree,
-                near_idx,
-                r_sample,
-                sampling_goal,
-                iter,
-                cand,
-                diagnostics);
+        } else {
+            bool sampling_goal = false;
+
+
+            Configuration r_sample = sample(cfg, iter, GOAL_BIAS_PERCENT, sampling_goal);
+
+            //--sampling_goal records whether this sample was the goal-biased one.--//
+            near_idx = find_nearest(tree, kd_nodes, kd_root, r_sample, cfg, goal_idx);
+
+
+            //--So this is the node from which the planner tries to extend.
+            if (near_idx != -1) {
+                found = extend(
+                    cfg,
+                    tree,
+                    near_idx,
+                    r_sample,
+                    sampling_goal,
+                    iter,
+                    cand,
+                    diagnostics);
+            }
         }
         //-- This is the heart of the motion-generation logic.--//
         if (found)
@@ -1737,11 +2005,10 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
             }
 
         }
-
+    
     }
 
     diagnostics.duplicate_nodes_found = rej_dup;
-
 
     result.rej_col =
         diagnostics.endpoint_collision_rejections +
@@ -1901,6 +2168,20 @@ static void print_machine_readable_diagnostics(
     std::cout
         << "DIAG_sample_reached_stops="
         << d.sample_reached_stops << "\n";
+
+
+    std::cout
+        << "DIAG_lateral_extension_requests="
+        << d.lateral_extension_requests << "\n";
+
+    std::cout
+        << "DIAG_successful_lateral_extensions="
+        << d.successful_lateral_extensions << "\n";
+
+    std::cout
+        << "DIAG_failed_lateral_extensions="
+        << d.failed_lateral_extensions << "\n";
+
 
     std::cout
         << "DIAG_tree_nodes_generated="
@@ -2723,6 +3004,22 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // Overwrite the single robot-facing control file.
+    // if (!write_controls_file(
+    //         cmds,
+    //         current_controls_file))
+    // {
+    //     std::cerr
+    //         << "ERROR: failed to write the current "
+    //         << "diffusion control file.\n";
+
+    //     return 1;
+    // }
+
+    // std::cout
+    //     << "Current robot control file updated: "
+    //     << current_controls_file
+    //     << "\n";
 
     diffusion_python_process.stop();
 
