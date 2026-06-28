@@ -399,7 +399,7 @@ def main():
 
 
 
-    idx = 0
+    idx = -1
 
 
 
