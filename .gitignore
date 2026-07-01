@@ -7,3 +7,6 @@ __pycache__/
 *.py[cod]
 **/__pycache__/
 *.pyc
+
+# Local Python virtual environment
+nav_diff_env/

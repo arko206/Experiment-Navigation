@@ -1,0 +1,74 @@
+Diffusion inference seed: 42
+Loading navigation diffusion model on cuda.
+number of parameters: 3.710467e+06
+Navigation diffusion server is ready.
+Loading config: planner.cfg
+Loading config: query.cfg
+Using diffusion comparison output directory: /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/Diffusion_RRT_2/diff_rrt_4017
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.611, -0.228, 1.722)
+  Goal       : (0.606, 1.497, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(0.981, 0.471) th=-0.091  L=0.250 W=0.350
+    [1] centre=(-0.200, 0.836) th=-1.591  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+Starting diffusion server with seed 42.
+Python diffusion server handshake completed.
+
+=== Executing 1 RRT search attempts ===
+New best goal cost found: 3.76313 (node 20) at iter 6
+New best goal cost found: 3.52072 (node 328) at iter 233
+DIAG_search_termination=goal_reached
+DIAG_primary_failure_reason=none
+DIAG_duplicate_nodes_found=29
+DIAG_candidate_nodes_collision_checked=564
+DIAG_collision_check_calls=1065
+DIAG_collision_rejections=63
+DIAG_endpoint_collision_rejections=63
+DIAG_rotation_collision_rejections=0
+DIAG_segment_collision_rejections=0
+DIAG_angular_no_progress_rejections=59
+DIAG_positional_no_progress_rejections=63
+DIAG_local_target_failures=0
+DIAG_observation_failures=0
+DIAG_inference_failures=0
+DIAG_diffusion_action_requests=564
+DIAG_accepted_rollout_nodes=379
+DIAG_successful_extensions=130
+DIAG_failed_extensions=120
+DIAG_sample_reached_stops=64
+DIAG_tree_nodes_generated=351
+  Run  0: cost =     3.5207 (seed=701)
+Best path found at iter 233 in 109.983782 seconds within the winning RRT run.
+
+Globally best cost: 3.5207 (seed=701)
+Best run rejections: col=63, dup=29
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.611   -0.228    1.722  Free      
+  1       0.536    0.262    1.722  Free      
+  2       0.464    0.737    1.722  Free      
+  3       0.464    0.737    0.854  Free      
+  4       0.762    1.079    0.854  Free      
+  5       0.762    1.079    1.819  Free      
+  6       0.698    1.328    1.819  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 7 waypoints to /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/Diffusion_RRT_2/diff_rrt_4017/Diffusion_se2_waypoints_4017.txt
+
+=== Controls (6 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.4963      0.0000      0.0000       1.0
+  1         0.4802      0.0000      0.0000       1.0
+  2         0.0000      0.0000     -0.8680       1.0
+  3         0.4533      0.0000      0.0000       1.0
+  4         0.0000      0.0000      0.9653       1.0
+  5         0.2576      0.0000      0.0000       1.0
+Wrote 6 controls to /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/Diffusion_RRT_2/diff_rrt_4017/Diffusion_controls_4017.txt

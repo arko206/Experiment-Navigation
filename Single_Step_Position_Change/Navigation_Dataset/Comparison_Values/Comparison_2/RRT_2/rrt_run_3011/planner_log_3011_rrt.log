@@ -1,0 +1,49 @@
+Loading config: planner.cfg
+Loading config: query.cfg
+Using comparison output directory: /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/RRT_2/rrt_run_3011
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.611, -0.228, 1.722)
+  Goal       : (0.606, 1.497, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(0.981, 0.471) th=-0.091  L=0.250 W=0.350
+    [1] centre=(-0.200, 0.836) th=-1.591  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+
+=== Executing 1 RRT search attempts ===
+New best goal cost found: 2.8227 (node 16) at iter 24
+New best goal cost found: 2.75784 (node 28) at iter 49
+New best goal cost found: 2.64221 (node 39) at iter 95
+New best goal cost found: 2.2039 (node 133) at iter 336
+New best goal cost found: 2.09899 (node 522) at iter 1471
+  Run  0: cost =     2.0990 (seed=101)
+Best path found at iter 1471 in 0.010364 seconds within the winning RRT run.
+
+Globally best cost: 2.0990 (seed=101)
+Best run rejections: dist=324, rot=0, col=1126, dup=1939
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.611   -0.228    1.722  Free      
+  1       0.536    0.266    1.722  Free      
+  2       0.460    0.760    1.722  Free      
+  3       0.385    1.255    1.722  Free      
+  4       0.341    1.545    1.722  Free      
+  5       0.643    1.591    1.722  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 6 waypoints to /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/RRT_2/rrt_run_3011/se2_waypoints_3011.txt
+
+=== Controls (5 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.5000      0.0000      0.0000       1.0
+  1         0.5000      0.0000      0.0000       1.0
+  2         0.5000      0.0000      0.0000       1.0
+  3         0.2935      0.0000      0.0000       1.0
+  4         0.0000     -0.3055      0.0000       1.0
+Wrote 5 controls to /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/RRT_2/rrt_run_3011/controls_3011.txt

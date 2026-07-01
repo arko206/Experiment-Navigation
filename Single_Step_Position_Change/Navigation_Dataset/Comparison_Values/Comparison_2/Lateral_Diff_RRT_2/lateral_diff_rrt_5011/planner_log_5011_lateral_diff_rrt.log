@@ -1,0 +1,92 @@
+Diffusion inference seed: 42
+Loading navigation diffusion model on cuda.
+number of parameters: 3.710467e+06
+Navigation diffusion server is ready.
+Loading config: planner.cfg
+Loading config: query.cfg
+Using diffusion comparison output directory: /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/Lateral_Diff_RRT_2/lateral_diff_rrt_5011
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.611, -0.228, 1.722)
+  Goal       : (0.606, 1.497, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(0.981, 0.471) th=-0.091  L=0.250 W=0.350
+    [1] centre=(-0.200, 0.836) th=-1.591  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+Starting diffusion server with seed 42.
+Python diffusion server handshake completed.
+
+=== Executing 1 RRT search attempts ===
+New best goal cost found: 6.70084 (node 405) at iter 237
+DIAG_search_termination=goal_reached
+DIAG_primary_failure_reason=none
+DIAG_duplicate_nodes_found=39
+DIAG_candidate_nodes_collision_checked=660
+DIAG_collision_check_calls=1246
+DIAG_collision_rejections=75
+DIAG_endpoint_collision_rejections=74
+DIAG_rotation_collision_rejections=1
+DIAG_segment_collision_rejections=0
+DIAG_angular_no_progress_rejections=67
+DIAG_positional_no_progress_rejections=56
+DIAG_local_target_failures=0
+DIAG_observation_failures=0
+DIAG_inference_failures=0
+DIAG_diffusion_action_requests=660
+DIAG_accepted_rollout_nodes=462
+DIAG_successful_extensions=146
+DIAG_failed_extensions=104
+DIAG_sample_reached_stops=51
+DIAG_lateral_extension_requests=26
+DIAG_successful_lateral_extensions=8
+DIAG_failed_lateral_extensions=18
+DIAG_tree_nodes_generated=424
+  Run  0: cost =     6.7008 (seed=101)
+Best path found at iter 237 in 89.722406 seconds within the winning RRT run.
+
+Globally best cost: 6.7008 (seed=101)
+Best run rejections: col=75, dup=39
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.611   -0.228    1.722  Free      
+  1       0.611   -0.228    0.836  Free      
+  2       0.611   -0.228    0.148  Free      
+  3       0.611   -0.228    0.936  Free      
+  4       0.611   -0.228    1.783  Free      
+  5       0.506    0.259    1.783  Free      
+  6       0.405    0.729    1.783  Free      
+  7       0.405    0.729    0.892  Free      
+  8       0.665    1.052    0.892  Free      
+  9       0.665    1.052   -0.038  Free      
+  10      0.667    1.105   -0.038  Free      
+  11      0.668    1.136   -0.038  Free      
+  12      0.670    1.170   -0.038  Free      
+  13      0.671    1.214   -0.038  Free      
+  14      0.676    1.329   -0.038  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 15 waypoints to /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/Lateral_Diff_RRT_2/lateral_diff_rrt_5011/Diffusion_se2_waypoints_5011.txt
+
+=== Controls (14 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.0000      0.0000     -0.8864       1.0
+  1         0.0000      0.0000     -0.6875       1.0
+  2         0.0000      0.0000      0.7879       1.0
+  3         0.0000      0.0000      0.8467       1.0
+  4         0.4990      0.0000      0.0000       1.0
+  5         0.4808      0.0000      0.0000       1.0
+  6         0.0000      0.0000     -0.8906       1.0
+  7         0.4146      0.0000      0.0000       1.0
+  8         0.0000      0.0000     -0.9299       1.0
+  9         0.0000      0.0531      0.0000       1.0
+  10        0.0000      0.0308      0.0000       1.0
+  11        0.0000      0.0344      0.0000       1.0
+  12        0.0000      0.0436      0.0000       1.0
+  13        0.0000      0.1155      0.0000       1.0
+Wrote 14 controls to /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_2/Lateral_Diff_RRT_2/lateral_diff_rrt_5011/Diffusion_controls_5011.txt

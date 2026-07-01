@@ -1,0 +1,58 @@
+Loading config: planner.cfg
+Loading config: query.cfg
+Using comparison output directory: /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_1/RRT_1/rrt_run_3003
+
+=== SE(2) RRT Blossom Planner ===
+  Start      : (0.750, -0.248, 1.443)
+  Goal       : (0.236, 1.618, [Any])
+  Robot R    : 0.250 m
+  Safety     : 0.100 m
+  Inflation  : 0.350 m
+  Step time  : 1.0 s
+  Obstacles  : 2
+    [0] centre=(1.006, 0.510) th=-0.106  L=0.250 W=0.350
+    [1] centre=(-0.159, 0.874) th=-2.274  L=0.570 W=0.420
+  Map        : X[-0.5, 1.5]  Y[-0.5, 2.0]
+  Goal Tol   : 0.200 m
+
+
+=== Executing 1 RRT search attempts ===
+New best goal cost found: 6.24073 (node 52) at iter 190
+New best goal cost found: 6.12551 (node 108) at iter 426
+New best goal cost found: 6.0353 (node 227) at iter 813
+New best goal cost found: 5.4304 (node 367) at iter 1155
+  Run  0: cost =     5.4304 (seed=307)
+Best path found at iter 1155 in 0.005900 seconds within the winning RRT run.
+
+Globally best cost: 5.4304 (seed=307)
+Best run rejections: dist=288, rot=0, col=1258, dup=1788
+
+=== Final Collision Check (Rectangular Footprint) ===
+  WP    x        y        theta    Status    
+  0       0.750   -0.248    1.443  Free      
+  1       0.283   -0.188    1.443  Free      
+  2       0.678   -0.239    1.443  Free      
+  3       0.678   -0.239    2.490  Free      
+  4       0.409   -0.034    2.490  Free      
+  5       0.409   -0.034    1.443  Free      
+  6       0.472    0.462    1.443  Free      
+  7       0.536    0.958    1.443  Free      
+  8       0.571    1.234    1.443  Free      
+  9       0.618    1.599    1.443  Free      
+  10      0.138    1.660    1.443  Free      
+  All waypoints are collision-free (Rectangular Footprint).
+Wrote 11 waypoints to /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_1/RRT_1/rrt_run_3003/se2_waypoints_3003.txt
+
+=== Controls (10 commands, step_time=1.0s) ===
+  Seg      vx(m/s)     vy(m/s)  vth(rad/s)    dur(s)
+  0         0.0000      0.4702      0.0000       1.0
+  1         0.0000     -0.3975      0.0000       1.0
+  2         0.0000      0.0000      1.0472       1.0
+  3         0.3383      0.0000      0.0000       1.0
+  4         0.0000      0.0000     -1.0472       1.0
+  5         0.5000      0.0000      0.0000       1.0
+  6         0.5000      0.0000      0.0000       1.0
+  7         0.2780      0.0000      0.0000       1.0
+  8         0.3682      0.0000      0.0000       1.0
+  9         0.0000      0.4839      0.0000       1.0
+Wrote 10 controls to /home/unitree-arka/Single_Step_Position_Change/Navigation_Dataset/Comparison_Values/Comparison_1/RRT_1/rrt_run_3003/controls_3003.txt
