@@ -61,7 +61,7 @@
 
 
 
-#define MAX_ITERS 100
+#define MAX_ITERS 250
 #define AOX_RUNS 1
 #define GOAL_BIAS_PERCENT 0
 #define LATERAL_BIAS_PERCENT 0
@@ -491,6 +491,33 @@ struct DiffusionAction
     double dtheta = 0.0;
 };
 
+// Detailed record of one diffusion rollout step. These records are
+// written to CSV for both successful and unsuccessful RRT searches.
+struct DiffusionExtensionTrace
+{
+    int iter = -1;
+    int rollout_step = -1;
+    int near_idx = -1;
+
+    std::string extension_type;
+    std::string target_mode;
+
+    bool has_sample = false;
+    bool has_current_pose = false;
+    bool has_local_target = false;
+    bool has_action = false;
+    bool has_candidate_pose = false;
+
+    Configuration sampled_target;
+    Configuration current_pose;
+    Configuration local_target;
+    DiffusionAction applied_action;
+    Configuration candidate_pose;
+
+    bool accepted = false;
+    std::string status;
+};
+
 // Machine-readable diagnostics collected during one diffusion-RRT attempt.
 struct PlannerDiagnostics
 {
@@ -545,7 +572,8 @@ public:
     bool start(
         const std::string &python_executable,
         const std::string &script_path,
-        const std::string &device = "cuda")
+        const std::string &device,
+        unsigned int diffusion_seed)
     {
         if (child_pid_ > 0)
         {
@@ -553,6 +581,9 @@ public:
                 << "Diffusion bridge is already running.\n";
             return false;
         }
+
+        const std::string diffusion_seed_text =
+                  std::to_string(diffusion_seed);
 
         // parent_to_child:
         // C++ writes observations -> Python reads stdin.
@@ -624,9 +655,7 @@ public:
             close(child_to_parent[0]);
             close(child_to_parent[1]);
 
-            // Equivalent command:
-            //
-            // venv/bin/python -u Eval_DM_navg.py --device cuda
+            // Equivalent command: venv/bin/python -u Eval_DM_navg.py \  --device cuda \ --seed 42
             execl(
                 python_executable.c_str(),
                 python_executable.c_str(),
@@ -634,6 +663,8 @@ public:
                 script_path.c_str(),
                 "--device",
                 device.c_str(),
+                "--seed",
+                diffusion_seed_text.c_str(),
                 static_cast<char *>(nullptr));
 
             // This line is reached only when execl fails.
@@ -1162,21 +1193,23 @@ static bool diffusion_action_to_world_pose(
     const Configuration &current_pose,
     const DiffusionAction &action,
     Configuration &candidate_pose,
-    PlannerDiagnostics &diagnostics)
+    PlannerDiagnostics &diagnostics,
+    std::string &status)
 {
     // Convert predicted robot-frame translation to world frame.
-    double cos_theta = std::cos(current_pose.theta);
-    double sin_theta = std::sin(current_pose.theta);
+    const double cos_theta = std::cos(current_pose.theta);
+    const double sin_theta = std::sin(current_pose.theta);
 
-    double dx_world =
+    const double dx_world =
         cos_theta * action.dx_robot -
         sin_theta * action.dy_robot;
 
-    double dy_world =
+    const double dy_world =
         sin_theta * action.dx_robot +
         cos_theta * action.dy_robot;
 
-    // Construct the generated world-frame pose.
+    // Construct the generated world-frame pose before any validation.
+    // This allows rejected candidates to be stored and plotted.
     candidate_pose.x =
         current_pose.x + dx_world;
 
@@ -1188,10 +1221,9 @@ static bool diffusion_action_to_world_pose(
             current_pose.theta +
             action.dtheta);
 
-    // Count this generated candidate as a node that entered collision checking.
     diagnostics.candidate_nodes_collision_checked++;
 
-    // Check the generated final pose first.
+    // Validate the generated endpoint.
     diagnostics.collision_check_calls++;
     if (!is_free(
             candidate_pose.x,
@@ -1200,14 +1232,15 @@ static bool diffusion_action_to_world_pose(
             cfg))
     {
         diagnostics.endpoint_collision_rejections++;
+        status = "endpoint_collision";
         return false;
     }
 
-    // If the model predicts a heading change, validate rotation
-    // at the current position.
+    // Validate an in-place rotation, when present.
     if (std::fabs(action.dtheta) > 1e-6)
     {
         diagnostics.collision_check_calls++;
+
         if (!rotation_free(
                 current_pose.x,
                 current_pose.y,
@@ -1216,13 +1249,13 @@ static bool diffusion_action_to_world_pose(
                 cfg))
         {
             diagnostics.rotation_collision_rejections++;
+            status = "rotation_collision";
             return false;
         }
     }
 
-    // If the model predicts translation, validate the complete
-    // segment using the generated heading.
-    double translation_distance =
+    // Validate the full translated segment, when present.
+    const double translation_distance =
         std::sqrt(
             dx_world * dx_world +
             dy_world * dy_world);
@@ -1230,6 +1263,7 @@ static bool diffusion_action_to_world_pose(
     if (translation_distance > 1e-6)
     {
         diagnostics.collision_check_calls++;
+
         if (!segment_free(
                 current_pose.x,
                 current_pose.y,
@@ -1239,10 +1273,12 @@ static bool diffusion_action_to_world_pose(
                 cfg))
         {
             diagnostics.segment_collision_rejections++;
+            status = "segment_collision";
             return false;
         }
     }
 
+    status = "collision_free";
     return true;
 }
 
@@ -1254,10 +1290,10 @@ static bool extend(
     bool sampling_goal,
     int iter,
     RotTranslateEdge &out_best_cand,
-    PlannerDiagnostics &diagnostics)
+    PlannerDiagnostics &diagnostics,
+    std::vector<DiffusionExtensionTrace> &trace_records)
 {
     (void)sampling_goal;
-    (void)iter;
 
     if (best_idx < 0 ||
         best_idx >= static_cast<int>(tree.size()))
@@ -1268,8 +1304,6 @@ static bool extend(
     }
 
     out_best_cand.rollout.clear();
-    // out_best_cand.parent_idx = best_idx;
-    // out_best_cand.eval_dist = 1e18;
 
     Configuration current_pose =
         tree[best_idx].point;
@@ -1278,13 +1312,38 @@ static bool extend(
          rollout_step < DIFF_MAX_ROLLOUT_STEPS;
          ++rollout_step)
     {
-        double previous_sample_distance =
-            current_pose.distance(r_sample, {0, 1});
+        DiffusionExtensionTrace trace;
+
+        trace.iter = iter;
+        trace.rollout_step = rollout_step;
+        trace.near_idx = best_idx;
+        trace.extension_type =
+            "goal_directed_diffusion";
+
+        trace.has_sample = true;
+        trace.sampled_target =
+            r_sample;
+
+        trace.has_current_pose = true;
+        trace.current_pose =
+            current_pose;
+
+        const double previous_sample_distance =
+            current_pose.distance(
+                r_sample,
+                {0, 1});
 
         // The fixed random sample has been reached closely enough.
         if (previous_sample_distance <= DIFF_SAMPLE_TOL)
         {
             diagnostics.sample_reached_stops++;
+
+            trace.status =
+                "sample_reached";
+
+            trace_records.push_back(
+                trace);
+
             break;
         }
 
@@ -1299,8 +1358,24 @@ static bool extend(
                 target_mode))
         {
             diagnostics.local_target_failures++;
+
+            trace.status =
+                "local_target_failure";
+
+            trace_records.push_back(
+                trace);
+
             break;
         }
+
+        trace.has_local_target = true;
+        trace.local_target =
+            local_target;
+
+        trace.target_mode =
+            (target_mode == LocalTargetMode::Rotation)
+                ? "rotation"
+                : "translation";
 
         std::array<double, 12> observation;
 
@@ -1311,12 +1386,20 @@ static bool extend(
                 observation))
         {
             diagnostics.observation_failures++;
+
+            trace.status =
+                "observation_failure";
+
+            trace_records.push_back(
+                trace);
+
             break;
         }
 
         DiffusionAction predicted_action;
 
         diagnostics.diffusion_action_requests++;
+
         if (!request_diffusion_action(
                 current_pose,
                 local_target,
@@ -1324,23 +1407,18 @@ static bool extend(
                 predicted_action))
         {
             diagnostics.inference_failures++;
+
+            trace.status =
+                "inference_failure";
+
+            trace_records.push_back(
+                trace);
+
             break;
         }
 
-        // std::cout
-        //     << "[Diffusion raw action]"
-        //     << " mode="
-        //     << (target_mode == LocalTargetMode::Rotation
-        //             ? "Rotation"
-        //             : "Translation")
-        //     << " dx_robot=" << predicted_action.dx_robot
-        //     << " dy_robot=" << predicted_action.dy_robot
-        //     << " dtheta=" << predicted_action.dtheta
-        //     << "\n";
-
-
-
-        // Preserve the pure motion primitive selected by build_local_target().
+        // Preserve the pure motion primitive selected by
+        // build_local_target().
         if (target_mode == LocalTargetMode::Rotation)
         {
             predicted_action.dx_robot = 0.0;
@@ -1352,15 +1430,37 @@ static bool extend(
             predicted_action.dy_robot = 0.0;
         }
 
-        Configuration candidate_pose;
+        trace.has_action = true;
+        trace.applied_action =
+            predicted_action;
 
-        if (!diffusion_action_to_world_pose(
+        Configuration candidate_pose;
+        std::string candidate_status;
+
+        const bool candidate_valid =
+            diffusion_action_to_world_pose(
                 cfg,
                 current_pose,
                 predicted_action,
                 candidate_pose,
-                diagnostics))
+                diagnostics,
+                candidate_status);
+
+        // candidate_pose is populated before collision checking, so it
+        // can be plotted even when validation fails.
+        trace.has_candidate_pose = true;
+        trace.candidate_pose =
+            candidate_pose;
+
+        if (!candidate_valid)
         {
+            trace.accepted = false;
+            trace.status =
+                candidate_status;
+
+            trace_records.push_back(
+                trace);
+
             break;
         }
 
@@ -1369,49 +1469,75 @@ static bool extend(
         // ----------------------------------------------------
         if (target_mode == LocalTargetMode::Rotation)
         {
-            double previous_angle_error =
+            const double previous_angle_error =
                 std::fabs(
                     wrap_angle(
                         local_target.theta -
                         current_pose.theta));
 
-            double new_angle_error =
+            const double new_angle_error =
                 std::fabs(
                     wrap_angle(
                         local_target.theta -
                         candidate_pose.theta));
-            // if the obtained pose have been obtained in the wrong direction, diffusion policy rollout stops--//
+
             if (new_angle_error >
                 previous_angle_error -
                     DIFF_MIN_ANG_PROGRESS)
             {
                 diagnostics.angular_no_progress_rejections++;
+
+                trace.accepted = false;
+                trace.status =
+                    "angular_no_progress";
+
+                trace_records.push_back(
+                    trace);
+
                 break;
             }
         }
         else
         {
-            double new_sample_distance =
+            const double new_sample_distance =
                 candidate_pose.distance(
                     r_sample,
                     {0, 1});
-            // if the newly obtained pose is far way from the sample target pose--//
+
             if (new_sample_distance >
                 previous_sample_distance -
                     DIFF_MIN_POS_PROGRESS)
             {
                 diagnostics.positional_no_progress_rejections++;
+
+                trace.accepted = false;
+                trace.status =
+                    "positional_no_progress";
+
+                trace_records.push_back(
+                    trace);
+
                 break;
             }
         }
-        //--- the line stores each successful generated pose----///
+
+        trace.accepted = true;
+        trace.status =
+            "accepted";
+
+        trace_records.push_back(
+            trace);
+
         out_best_cand.rollout.push_back(
             candidate_pose);
+
         diagnostics.accepted_rollout_nodes++;
 
-        current_pose = candidate_pose;
+        current_pose =
+            candidate_pose;
     }
-    // if no collision-free rollouts are obtained from diffusion policy----///
+
+    // No collision-free, progress-making rollout pose was obtained.
     if (out_best_cand.rollout.empty())
     {
         diagnostics.failed_extensions++;
@@ -1587,6 +1713,7 @@ struct RRTResult {
     long rej_col = 0, rej_dup = 0;
     long tree_nodes_generated = 0;
     PlannerDiagnostics diagnostics;
+    std::vector<DiffusionExtensionTrace> extension_traces;
 
     // Time taken within this RRT run to find the best goal-reaching path
     double time_to_best_goal_sec = -1.0;
@@ -1597,75 +1724,100 @@ struct RRTResult {
 // RRT search
 // ============================================================
 //-- cfg contains planner settings, seed initializes random sampling---///
-static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
-{   
-    //--(a)creates an empty result structure
+static RRTResult run_rrt(
+    const PlannerConfig &cfg,
+    unsigned int seed)
+{
     RRTResult result;
 
-    //--(b)fixes the random seed so the same seed reproduces the same random tree
     result.seed = seed;
+    result.extension_traces.reserve(
+        MAX_ITERS * DIFF_MAX_ROLLOUT_STEPS);
+
     std::srand(seed);
 
-    auto rrt_start_time = std::chrono::steady_clock::now();
+    const auto rrt_start_time =
+        std::chrono::steady_clock::now();
 
-    //--(c)heading difference Δθ
-    // --(i) Δθ is scaled by cfg.w_theta
-    // --(ii) so orientation affects nearest-neighbor search and perhaps extension quality
-    //--- (iii) tuning w_theta allows us to control how much the planner cares about heading similarity vs position similarity when finding nearest neighbors and evaluating extensions.
-    // If large, the planner cares more about heading similarity.
-    // If small, it mostly cares about position.
-
-    Configuration::weight_theta = cfg.w_theta;
-
-
+    Configuration::weight_theta =
+        cfg.w_theta;
 
     std::vector<RRTNode> tree;
     tree.reserve(MAX_ITERS);
 
-    //-- kd_nodes--> This is probably the KD-tree structure used for fast nearest-neighbor lookup.--//
     std::vector<KDNode> kd_nodes;
     kd_nodes.reserve(MAX_ITERS);
+
     int kd_root = -1;
-
-    //goal_idx = -1 means no goal-reaching node has been found yet
-    // best_goal_cost stores the best path cost to goal found so far
-    // the rej_* counters count rejected expansion attempts
-
     int goal_idx = -1;
-    double best_goal_cost = 1e18;
+
+    double best_goal_cost =
+        1e18;
 
     long rej_dup = 0;
     PlannerDiagnostics diagnostics;
 
-    
-    add_node(tree, kd_nodes, kd_root, cfg.start, -1, 0.0, rej_dup);
+    add_node(
+        tree,
+        kd_nodes,
+        kd_root,
+        cfg.start,
+        -1,
+        0.0,
+        rej_dup);
 
-    //-- (10) This repeats the grow-tree process up to MAX_ITERS.---//
-    for (int iter = 0; iter < MAX_ITERS; ++iter)
+    for (int iter = 0;
+         iter < MAX_ITERS;
+         ++iter)
     {
-        //-- (a) near_idx = index of nearest tree node selected for expansion
-        int near_idx = -1;
-        //--(b) cand = candidate motion edge returned by extension--//
         RotTranslateEdge cand;
-        //--(c) found = whether the extension was successful (collision-free, respects motion limits, etc.)--//
-        bool found = false;
 
-        bool sampling_goal = false;
+        bool sampling_goal =
+            false;
 
-        Configuration r_sample = sample(cfg, iter, GOAL_BIAS_PERCENT, sampling_goal);
+        const Configuration r_sample =
+            sample(
+                cfg,
+                iter,
+                GOAL_BIAS_PERCENT,
+                sampling_goal);
 
-        //--sampling_goal records whether this sample was the goal-biased one.--//
-        near_idx = find_nearest(tree, kd_nodes, kd_root, r_sample, cfg, goal_idx);
+        const int near_idx =
+            find_nearest(
+                tree,
+                kd_nodes,
+                kd_root,
+                r_sample,
+                cfg,
+                goal_idx);
 
-        //-- This finds the tree node closest to the sampled target.--//
+        if (near_idx == -1)
+        {
+            diagnostics.invalid_nearest_failures++;
+            diagnostics.failed_extensions++;
 
-        // -- Mathematically:
+            DiffusionExtensionTrace trace;
 
-        // -- qnear=arg⁡min⁡qi∈Vd(qi,qsample)
+            trace.iter = iter;
+            trace.rollout_step = -1;
+            trace.near_idx = -1;
+            trace.extension_type =
+                "goal_directed_diffusion";
+            trace.has_sample = true;
+            trace.sampled_target =
+                r_sample;
+            trace.accepted = false;
+            trace.status =
+                "nearest_node_not_found";
 
-        //--So this is the node from which the planner tries to extend.
-        if (near_idx != -1) {
-            found = extend(
+            result.extension_traces.push_back(
+                trace);
+
+            continue;
+        }
+
+        const bool found =
+            extend(
                 cfg,
                 tree,
                 near_idx,
@@ -1673,103 +1825,122 @@ static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
                 sampling_goal,
                 iter,
                 cand,
-                diagnostics);
-        }
-        //-- This is the heart of the motion-generation logic.--//
-        if (found)
+                diagnostics,
+                result.extension_traces);
+
+        if (!found || cand.rollout.empty())
         {
-            // ========================================================
-            // Case 1: Iterative diffusion rollout
-            // ========================================================
-            if (!cand.rollout.empty())
+            continue;
+        }
+
+        int last_parent =
+            near_idx;
+
+        for (const Configuration &generated_pose :
+             cand.rollout)
+        {
+            // Copy before add_node(), because vector reallocation can
+            // invalidate references.
+            const Configuration parent_pose =
+                tree[last_parent].point;
+
+            const double parent_cost =
+                tree[last_parent].cost;
+
+            const double edge_cost =
+                parent_pose.distance(
+                    generated_pose);
+
+            const int new_idx =
+                add_node(
+                    tree,
+                    kd_nodes,
+                    kd_root,
+                    generated_pose,
+                    last_parent,
+                    parent_cost + edge_cost,
+                    rej_dup);
+
+            const bool improved_goal =
+                update_best_goal(
+                    tree,
+                    new_idx,
+                    cfg,
+                    goal_idx,
+                    best_goal_cost,
+                    iter);
+
+            if (improved_goal)
             {
-                int last_parent = near_idx;
+                const auto now =
+                    std::chrono::steady_clock::now();
 
-                for (const Configuration &generated_pose :
-                    cand.rollout)
-                {
-                    // Copy before add_node(), because the vector may
-                    // reallocate when a new node is inserted.
-                    Configuration parent_pose =
-                        tree[last_parent].point;
+                result.time_to_best_goal_sec =
+                    std::chrono::duration<double>(
+                        now - rrt_start_time)
+                        .count();
 
-                    double parent_cost =
-                        tree[last_parent].cost;
-
-                    // Weighted SE(2) edge cost:
-                    // planar distance + w_theta * angular difference.
-                    double edge_cost =
-                        parent_pose.distance(generated_pose);
-
-                    int new_idx =
-                        add_node(
-                            tree,
-                            kd_nodes,
-                            kd_root,
-                            generated_pose,
-                            last_parent,
-                            parent_cost + edge_cost,
-                            rej_dup);
-
-                    bool improved_goal =
-                        update_best_goal(
-                            tree,
-                            new_idx,
-                            cfg,
-                            goal_idx,
-                            best_goal_cost,
-                            iter);
-
-                    if (improved_goal)
-                    {
-                        auto now =
-                            std::chrono::steady_clock::now();
-
-                        result.time_to_best_goal_sec =
-                            std::chrono::duration<double>(
-                                now - rrt_start_time).count();
-
-                        result.best_goal_iter = iter;
-                    }
-
-                    last_parent = new_idx;
-                }
+                result.best_goal_iter =
+                    iter;
             }
 
+            last_parent =
+                new_idx;
         }
-
     }
 
-    diagnostics.duplicate_nodes_found = rej_dup;
-
+    diagnostics.duplicate_nodes_found =
+        rej_dup;
 
     result.rej_col =
         diagnostics.endpoint_collision_rejections +
         diagnostics.rotation_collision_rejections +
         diagnostics.segment_collision_rejections;
-    result.rej_dup = rej_dup;
-    result.tree_nodes_generated = static_cast<long>(tree.size());
-    result.diagnostics = diagnostics;
+
+    result.rej_dup =
+        rej_dup;
+
+    result.tree_nodes_generated =
+        static_cast<long>(tree.size());
+
+    result.diagnostics =
+        diagnostics;
 
     if (goal_idx != -1)
     {
         result.success = true;
-        result.cost = best_goal_cost;
+        result.cost =
+            best_goal_cost;
 
         std::vector<int> path_idx;
-        int curr = goal_idx;
+
+        int curr =
+            goal_idx;
+
         while (curr != -1)
         {
-            path_idx.push_back(curr);
-            curr = tree[curr].parent;
-        }
-        std::reverse(path_idx.begin(), path_idx.end());
+            path_idx.push_back(
+                curr);
 
-        for (int idx : path_idx) {
-            result.path.push_back(tree[idx].point);
+            curr =
+                tree[curr].parent;
         }
-        result.tree = std::move(tree);
+
+        std::reverse(
+            path_idx.begin(),
+            path_idx.end());
+
+        for (const int idx :
+             path_idx)
+        {
+            result.path.push_back(
+                tree[idx].point);
+        }
     }
+
+    // Always preserve the explored tree, including on failure.
+    result.tree =
+        std::move(tree);
 
     return result;
 }
@@ -1916,6 +2087,107 @@ static bool write_rrt_tree(const std::vector<RRTNode> &tree, unsigned int seed, 
         tree_file << node.point.x << " " << node.point.y << " " << node.point.theta << " " << node.parent << " " << node.cost << "\n";
     }
     tree_file.close();
+    return true;
+}
+
+
+static bool write_diffusion_extension_trace(
+    const std::vector<DiffusionExtensionTrace> &traces,
+    const std::string &filename)
+{
+    std::ofstream file(filename);
+
+    if (!file)
+    {
+        return false;
+    }
+
+    file << std::fixed
+         << std::setprecision(6);
+
+    file
+        << "iter,rollout_step,extension_type,near_idx,"
+        << "sample_x,sample_y,sample_theta,"
+        << "current_x,current_y,current_theta,"
+        << "local_x,local_y,local_theta,"
+        << "target_mode,"
+        << "action_dx_robot,action_dy_robot,action_dtheta,"
+        << "candidate_x,candidate_y,candidate_theta,"
+        << "accepted,status\n";
+
+    const auto write_pose =
+        [&file](
+            bool available,
+            const Configuration &pose)
+        {
+            if (available)
+            {
+                file
+                    << pose.x << ","
+                    << pose.y << ","
+                    << pose.theta;
+            }
+            else
+            {
+                file << "nan,nan,nan";
+            }
+        };
+
+    for (const auto &trace : traces)
+    {
+        file
+            << trace.iter << ","
+            << trace.rollout_step << ","
+            << trace.extension_type << ","
+            << trace.near_idx << ",";
+
+        write_pose(
+            trace.has_sample,
+            trace.sampled_target);
+
+        file << ",";
+
+        write_pose(
+            trace.has_current_pose,
+            trace.current_pose);
+
+        file << ",";
+
+        write_pose(
+            trace.has_local_target,
+            trace.local_target);
+
+        file
+            << ","
+            << trace.target_mode
+            << ",";
+
+        if (trace.has_action)
+        {
+            file
+                << trace.applied_action.dx_robot << ","
+                << trace.applied_action.dy_robot << ","
+                << trace.applied_action.dtheta;
+        }
+        else
+        {
+            file << "nan,nan,nan";
+        }
+
+        file << ",";
+
+        write_pose(
+            trace.has_candidate_pose,
+            trace.candidate_pose);
+
+        file
+            << ","
+            << (trace.accepted ? 1 : 0)
+            << ","
+            << trace.status
+            << "\n";
+    }
+
     return true;
 }
 
@@ -2084,7 +2356,7 @@ static std::string get_navigation_dataset_root()
         return "";
     }
 
-    return std::string(home) + "/Navigation_Dataset";
+    return std::string(home) +"/Single_Step_Position_Change/Navigation_Dataset";
 }
 
 static std::string indexed_filename(const std::string &prefix,
@@ -2492,36 +2764,74 @@ int main(int argc, char **argv)
     std::string config_file = "planner.cfg";
     int run_idx = -1;
     int seed_override = -1;
+    int diffusion_seed = 42;
+    std::string output_dir_override;
 
     // Parse CLI for the master config only
     for (int i = 1; i < argc; ++i)
     {
-        if (std::strcmp(argv[i], "--config") == 0 && i + 1 < argc)
+        if (
+            std::strcmp(argv[i], "--config") == 0 &&
+            i + 1 < argc)
         {
             config_file = argv[++i];
         }
-        else if (std::strcmp(argv[i], "--run_idx") == 0 && i + 1 < argc)
+        else if (
+            std::strcmp(argv[i], "--run_idx") == 0 &&
+            i + 1 < argc)
         {
             run_idx = std::stoi(argv[++i]);
         }
-        else if (std::strcmp(argv[i], "--seed") == 0 && i + 1 < argc)
+        else if (
+            std::strcmp(argv[i], "--seed") == 0 &&
+            i + 1 < argc)
         {
             seed_override = std::stoi(argv[++i]);
         }
-        else if (std::strcmp(argv[i], "-h") == 0 ||
-                std::strcmp(argv[i], "--help") == 0)
+        else if (
+            std::strcmp(argv[i], "--diffusion_seed") == 0 &&
+            i + 1 < argc)
+        {
+            diffusion_seed = std::stoi(argv[++i]);
+        }
+        else if (
+            std::strcmp(argv[i], "--output_dir") == 0 &&
+            i + 1 < argc)
+        {
+            output_dir_override = argv[++i];
+        }
+        else if (
+            std::strcmp(argv[i], "-h") == 0 ||
+            std::strcmp(argv[i], "--help") == 0)
         {
             std::printf(
-            "Usage: %s [options]\n"
-            "\n"
-            "Options:\n"
-            "  --config <path>       Master config (default: planner.cfg)\n"
-            "  --run_idx <integer>   Experiment index\n"
-            "  --seed <integer>      Fixed RRT random seed\n"
-            "  -h, --help            This message\n",
-            argv[0]);
+                "Usage: %s [options]\n"
+                "\n"
+                "Options:\n"
+                "  --config <path>             Master config\n"
+                "  --run_idx <integer>         Experiment index\n"
+                "  --seed <integer>            Fixed RRT random seed\n"
+                "  --diffusion_seed <integer>  Fixed diffusion seed\n"
+                "  --output_dir <path>         Override output directory\n"
+                "  -h, --help                  This message\n",
+                argv[0]);
+
             return 0;
         }
+        else
+        {
+            std::cerr
+                << "ERROR: unknown or incomplete argument: "
+                << argv[i] << "\n";
+            return 1;
+        }
+    }
+
+    if (diffusion_seed < 0)
+    {
+        std::cerr
+            << "ERROR: diffusion seed must be non-negative.\n";
+        return 1;
     }
     
     ////--- To validate for only positive running index-----------------///
@@ -2556,42 +2866,141 @@ int main(int argc, char **argv)
     // Use command-line run index for all output files
     // Save planner outputs inside Navigation_Dataset subfolders
 
-    std::string dataset_root = get_navigation_dataset_root();
+    std::string dataset_root =
+    get_navigation_dataset_root();
+
     if (dataset_root.empty())
+    {
         return 1;
+    }
 
-    std::string waypoints_dir = dataset_root + "/Diffusion_Policy_Navigation/Diffusion_waypoints";
-    std::string controls_dir = dataset_root + "/Diffusion_Policy_Navigation/Diffusion_controls";
-    std::string planning_tree_dir = dataset_root + "/Diffusion_Policy_Navigation/Diffusion_planning_tree";
-    std::string planner_logs_dir = dataset_root + "/Diffusion_Policy_Navigation/Diffusion_planner_logs";
+    std::string rrt_tree_out;
+    std::string extension_trace_out;
 
-    // Create output folders
-    if (!ensure_directory(dataset_root))
-        return 1;
-    if (!ensure_directory(waypoints_dir))
-        return 1;
-    if (!ensure_directory(controls_dir))
-        return 1;
-    if (!ensure_directory(planning_tree_dir))
-        return 1;
-    if (!ensure_directory(planner_logs_dir))
-        return 1;
+    if (!output_dir_override.empty())
+    {
+        // =====================================================
+        // Fixed-seed comparison mode
+        //
+        // All outputs are written directly inside the current
+        // Comparison_Values diffusion run directory.
+        // =====================================================
+        if (!ensure_directory(output_dir_override))
+        {
+            std::cerr
+                << "ERROR: cannot create comparison output directory: "
+                << output_dir_override << "\n";
+            return 1;
+        }
 
-    // Indexed output files
-    cfg.waypoints_out =
-        waypoints_dir + "/" + indexed_filename("Diffusion_se2_waypoints", run_idx, ".txt");
+        cfg.waypoints_out =
+            output_dir_override + "/" +
+            indexed_filename(
+                "Diffusion_se2_waypoints",
+                run_idx,
+                ".txt");
 
-    cfg.controls_out =
-        controls_dir + "/" + indexed_filename("Diffusion_controls", run_idx, ".txt");
+        cfg.controls_out =
+            output_dir_override + "/" +
+            indexed_filename(
+                "Diffusion_controls",
+                run_idx,
+                ".txt");
 
-    // Fixed control file used by the robot executor.
-    // This file is overwritten after every successful planner run.
-    // const std::string current_controls_file =
-    //     controls_dir +
-    //     "/Current_Diffusion_Control.txt";
+        rrt_tree_out =
+            output_dir_override + "/" +
+            indexed_filename(
+                "Diffusion_rrt_tree",
+                run_idx,
+                ".txt");
 
-    std::string rrt_tree_out =
-        planning_tree_dir + "/" + indexed_filename("Diffusion_rrt_tree", run_idx, ".txt");
+        extension_trace_out =
+            output_dir_override + "/" +
+            indexed_filename(
+                "Diffusion_extension_trace",
+                run_idx,
+                ".csv");
+
+        std::cout
+            << "Using diffusion comparison output directory: "
+            << output_dir_override << "\n";
+    }
+    else
+    {
+        // =====================================================
+        // Standalone mode
+        //
+        // Retain the previous behaviour when this planner is run
+        // manually without --output_dir.
+        // =====================================================
+        const std::string waypoints_dir =
+            dataset_root +
+            "/Diffusion_Policy_Navigation/"
+            "Diffusion_waypoints";
+
+        const std::string controls_dir =
+            dataset_root +
+            "/Diffusion_Policy_Navigation/"
+            "Diffusion_controls";
+
+        const std::string planning_tree_dir =
+            dataset_root +
+            "/Diffusion_Policy_Navigation/"
+            "Diffusion_planning_tree";
+
+        const std::string planner_logs_dir =
+            dataset_root +
+            "/Diffusion_Policy_Navigation/"
+            "Diffusion_planner_logs";
+
+        if (!ensure_directory(dataset_root))
+            return 1;
+
+        if (!ensure_directory(waypoints_dir))
+            return 1;
+
+        if (!ensure_directory(controls_dir))
+            return 1;
+
+        if (!ensure_directory(planning_tree_dir))
+            return 1;
+
+        if (!ensure_directory(planner_logs_dir))
+            return 1;
+
+        cfg.waypoints_out =
+            waypoints_dir + "/" +
+            indexed_filename(
+                "Diffusion_se2_waypoints",
+                run_idx,
+                ".txt");
+
+        cfg.controls_out =
+            controls_dir + "/" +
+            indexed_filename(
+                "Diffusion_controls",
+                run_idx,
+                ".txt");
+
+        rrt_tree_out =
+            planning_tree_dir + "/" +
+            indexed_filename(
+                "Diffusion_rrt_tree",
+                run_idx,
+                ".txt");
+
+        extension_trace_out =
+            planning_tree_dir + "/" +
+            indexed_filename(
+                "Diffusion_extension_trace",
+                run_idx,
+                ".csv");
+
+        std::cout
+            << "Using standalone diffusion output folders under: "
+            << dataset_root << "\n";
+    }
+
 
 
     // Initialize random seed from config or time
@@ -2609,6 +3018,7 @@ int main(int argc, char **argv)
     std::remove(cfg.waypoints_out.c_str());
     std::remove(cfg.controls_out.c_str());
     std::remove(rrt_tree_out.c_str());
+    std::remove(extension_trace_out.c_str());
     //std::remove(current_controls_file.c_str());
 
     // ── Pre-search Safety Check ──
@@ -2626,77 +3036,201 @@ int main(int argc, char **argv)
     // Start the persistent Python diffusion-policy server once
     // ========================================================
 
+    const std::string diffusion_policy_directory =
+        dataset_root +
+        "/Diffusion_Policy_Navigation";
+
     const std::string python_executable =
-        "/home/unitree-arka/Navigation_Dataset/"
-        "Diffusion_Policy_Navigation/"
-        "nav_diff_env/bin/python";
+        diffusion_policy_directory +
+        "/nav_diff_env/bin/python";
 
     const std::string diffusion_script =
-        "/home/unitree-arka/Navigation_Dataset/"
-        "Diffusion_Policy_Navigation/"
-        "Eval_DM_navg.py";
-
+        diffusion_policy_directory +
+        "/Eval_DM_navg.py";
     // Prevent the planner from being terminated by SIGPIPE
     // if the Python process closes unexpectedly.
     std::signal(SIGPIPE, SIG_IGN);
 
+
+    std::cout
+        << "Starting diffusion server with seed "
+        << diffusion_seed
+        << ".\n";
+
     if (!diffusion_python_process.start(
             python_executable,
             diffusion_script,
-            "cuda"))
-    {
-        std::cerr
-            << "ERROR: failed to start the "
-            << "Python diffusion server.\n";
+            "cuda",
+            static_cast<unsigned int>(
+                diffusion_seed)))
+        {
+            std::cerr
+                << "ERROR: failed to start the "
+                << "Python diffusion server.\n";
 
-        return 1;
-   }
+            return 1;
+    }
 
     // ── Plan ──
-    int num_runs = AOX_RUNS;
-    RRTResult best_overall;
-    best_overall.cost = 1e18;
+    const int num_runs = AOX_RUNS;
 
-    std::printf("\n=== Executing %d RRT search attempts ===\n", num_runs);
-    for (int i = 0; i < num_runs; ++i) {
-        unsigned int run_seed = (cfg.seed == -1) ? (final_seed + i) : (unsigned int)cfg.seed;
-        RRTResult res = run_rrt(cfg, run_seed);
-        print_machine_readable_diagnostics(res);
+    RRTResult selected_result;
+    selected_result.cost = 1e18;
 
-        if (res.success) {
-            std::printf("  Run %2d: cost = %10.4f (seed=%u)\n", i, res.cost, run_seed);
-            if (res.cost < best_overall.cost) {
-                best_overall = std::move(res);
+    bool have_selected_result = false;
+
+    std::printf(
+        "\n=== Executing %d RRT search attempts ===\n",
+        num_runs);
+
+    for (int i = 0;
+         i < num_runs;
+         ++i)
+    {
+        const unsigned int run_seed =
+            (cfg.seed == -1)
+                ? (final_seed + i)
+                : static_cast<unsigned int>(cfg.seed);
+
+        RRTResult res =
+            run_rrt(
+                cfg,
+                run_seed);
+
+        print_machine_readable_diagnostics(
+            res);
+
+        if (res.success)
+        {
+            std::printf(
+                "  Run %2d: cost = %10.4f (seed=%u)\n",
+                i,
+                res.cost,
+                run_seed);
+
+            // Prefer a successful result. Among successful results,
+            // retain the one with the lowest cost.
+            if (!have_selected_result ||
+                !selected_result.success ||
+                res.cost < selected_result.cost)
+            {
+                selected_result =
+                    std::move(res);
+
+                have_selected_result =
+                    true;
             }
-        } else {
-            std::printf("  Run %2d: failed\n", i);
         }
-        if (cfg.seed != -1) break; // Don't repeat if seed is fixed
+        else
+        {
+            std::printf(
+                "  Run %2d: failed (seed=%u, tree_nodes=%zu)\n",
+                i,
+                run_seed,
+                res.tree.size());
+
+            // If no successful run exists, retain the failed run
+            // with the largest explored tree for diagnostics.
+            if (!have_selected_result ||
+                (!selected_result.success &&
+                 res.tree.size() >
+                     selected_result.tree.size()))
+            {
+                selected_result =
+                    std::move(res);
+
+                have_selected_result =
+                    true;
+            }
+        }
+
+        if (cfg.seed != -1)
+        {
+            break;
+        }
     }
 
-    if (!best_overall.success) {
-        std::printf("RRT search failed to find a path in all attempts.\n");
-        return 0; // Still return 0 so user can see the setup in viz
+    // Save the selected tree and trace on both success and failure.
+    if (!have_selected_result)
+    {
+        std::cerr
+            << "ERROR: no diffusion-RRT result was produced.\n";
+
+        diffusion_python_process.stop();
+        return 1;
     }
 
-    double planning_time_sec = best_overall.time_to_best_goal_sec;
+    if (!write_rrt_tree(
+            selected_result.tree,
+            selected_result.seed,
+            rrt_tree_out))
+    {
+        std::cerr
+            << "ERROR: failed to write diffusion RRT tree: "
+            << rrt_tree_out << "\n";
 
-    std::printf("Best path found at iter %d in %.6f seconds within the winning RRT run.\n",
-                best_overall.best_goal_iter,
-                planning_time_sec);
+        diffusion_python_process.stop();
+        return 1;
+    }
 
-    std::printf("\nGlobally best cost: %.4f (seed=%u)\n", best_overall.cost, best_overall.seed);
-    std::printf("Best run rejections: col=%ld, dup=%ld\n", best_overall.rej_col, best_overall.rej_dup);
+    if (!write_diffusion_extension_trace(
+            selected_result.extension_traces,
+            extension_trace_out))
+    {
+        std::cerr
+            << "ERROR: failed to write diffusion extension trace: "
+            << extension_trace_out << "\n";
 
-    write_rrt_tree(best_overall.tree, best_overall.seed, rrt_tree_out);
-    std::vector<Configuration> path = best_overall.path;
+        diffusion_python_process.stop();
+        return 1;
+    }
+
+    // On failure, tree and trace remain available for plotting.
+    // Waypoints and controls are intentionally not generated.
+    if (!selected_result.success)
+    {
+        std::printf(
+            "RRT search failed to find a path. "
+            "The explored diffusion RRT tree and extension trace "
+            "were saved.\n");
+
+        diffusion_python_process.stop();
+        return 0;
+    }
+
+    const double planning_time_sec =
+        selected_result.time_to_best_goal_sec;
+
+    std::printf(
+        "Best path found at iter %d in %.6f seconds "
+        "within the winning RRT run.\n",
+        selected_result.best_goal_iter,
+        planning_time_sec);
+
+    std::printf(
+        "\nGlobally best cost: %.4f (seed=%u)\n",
+        selected_result.cost,
+        selected_result.seed);
+
+    std::printf(
+        "Best run rejections: col=%ld, dup=%ld\n",
+        selected_result.rej_col,
+        selected_result.rej_dup);
+
+    std::vector<Configuration> path =
+        selected_result.path;
 
     
     collision_check_path(path, cfg);
 
 
-    if (!write_waypoints_file(path, cfg.waypoints_out))
-    return 1;
+    if (!write_waypoints_file(
+            path,
+            cfg.waypoints_out))
+    {
+        diffusion_python_process.stop();
+        return 1;
+    }
 
     // ── Save Navigation Dataset for this run index ──
     // if (!save_navigation_dataset_for_run(path, cfg, run_idx, planning_time_sec))
@@ -2717,9 +3251,10 @@ int main(int argc, char **argv)
     }
 
     if (!write_controls_file(
-        cmds,
-        cfg.controls_out))
+            cmds,
+            cfg.controls_out))
     {
+        diffusion_python_process.stop();
         return 1;
     }
 

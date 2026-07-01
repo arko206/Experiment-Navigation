@@ -491,33 +491,6 @@ struct DiffusionAction
     double dtheta = 0.0;
 };
 
-// Detailed record of one diffusion rollout step. These records are
-// written to CSV for both successful and unsuccessful RRT searches.
-struct DiffusionExtensionTrace
-{
-    int iter = -1;
-    int rollout_step = -1;
-    int near_idx = -1;
-
-    std::string extension_type;
-    std::string target_mode;
-
-    bool has_sample = false;
-    bool has_current_pose = false;
-    bool has_local_target = false;
-    bool has_action = false;
-    bool has_candidate_pose = false;
-
-    Configuration sampled_target;
-    Configuration current_pose;
-    Configuration local_target;
-    DiffusionAction applied_action;
-    Configuration candidate_pose;
-
-    bool accepted = false;
-    std::string status;
-};
-
 // Machine-readable diagnostics collected during one diffusion-RRT attempt.
 struct PlannerDiagnostics
 {
@@ -1260,23 +1233,21 @@ static bool diffusion_action_to_world_pose(
     const Configuration &current_pose,
     const DiffusionAction &action,
     Configuration &candidate_pose,
-    PlannerDiagnostics &diagnostics,
-    std::string &status)
+    PlannerDiagnostics &diagnostics)
 {
     // Convert predicted robot-frame translation to world frame.
-    const double cos_theta = std::cos(current_pose.theta);
-    const double sin_theta = std::sin(current_pose.theta);
+    double cos_theta = std::cos(current_pose.theta);
+    double sin_theta = std::sin(current_pose.theta);
 
-    const double dx_world =
+    double dx_world =
         cos_theta * action.dx_robot -
         sin_theta * action.dy_robot;
 
-    const double dy_world =
+    double dy_world =
         sin_theta * action.dx_robot +
         cos_theta * action.dy_robot;
 
-    // Construct the generated world-frame pose before validation so
-    // that rejected candidates can still be recorded and plotted.
+    // Construct the generated world-frame pose.
     candidate_pose.x =
         current_pose.x + dx_world;
 
@@ -1288,11 +1259,11 @@ static bool diffusion_action_to_world_pose(
             current_pose.theta +
             action.dtheta);
 
+    // Count this generated candidate as a node that entered collision checking.
     diagnostics.candidate_nodes_collision_checked++;
 
-    // Validate the generated endpoint.
+    // Check the generated final pose first.
     diagnostics.collision_check_calls++;
-
     if (!is_free(
             candidate_pose.x,
             candidate_pose.y,
@@ -1300,15 +1271,14 @@ static bool diffusion_action_to_world_pose(
             cfg))
     {
         diagnostics.endpoint_collision_rejections++;
-        status = "endpoint_collision";
         return false;
     }
 
-    // Validate an in-place rotation, when present.
+    // If the model predicts a heading change, validate rotation
+    // at the current position.
     if (std::fabs(action.dtheta) > 1e-6)
     {
         diagnostics.collision_check_calls++;
-
         if (!rotation_free(
                 current_pose.x,
                 current_pose.y,
@@ -1317,13 +1287,13 @@ static bool diffusion_action_to_world_pose(
                 cfg))
         {
             diagnostics.rotation_collision_rejections++;
-            status = "rotation_collision";
             return false;
         }
     }
 
-    // Validate the complete translated segment, when present.
-    const double translation_distance =
+    // If the model predicts translation, validate the complete
+    // segment using the generated heading.
+    double translation_distance =
         std::sqrt(
             dx_world * dx_world +
             dy_world * dy_world);
@@ -1331,7 +1301,6 @@ static bool diffusion_action_to_world_pose(
     if (translation_distance > 1e-6)
     {
         diagnostics.collision_check_calls++;
-
         if (!segment_free(
                 current_pose.x,
                 current_pose.y,
@@ -1341,12 +1310,10 @@ static bool diffusion_action_to_world_pose(
                 cfg))
         {
             diagnostics.segment_collision_rejections++;
-            status = "segment_collision";
             return false;
         }
     }
 
-    status = "collision_free";
     return true;
 }
 
@@ -1358,10 +1325,10 @@ static bool extend(
     bool sampling_goal,
     int iter,
     RotTranslateEdge &out_best_cand,
-    PlannerDiagnostics &diagnostics,
-    std::vector<DiffusionExtensionTrace> &trace_records)
+    PlannerDiagnostics &diagnostics)
 {
     (void)sampling_goal;
+    (void)iter;
 
     if (best_idx < 0 ||
         best_idx >= static_cast<int>(tree.size()))
@@ -1372,6 +1339,8 @@ static bool extend(
     }
 
     out_best_cand.rollout.clear();
+    // out_best_cand.parent_idx = best_idx;
+    // out_best_cand.eval_dist = 1e18;
 
     Configuration current_pose =
         tree[best_idx].point;
@@ -1380,38 +1349,13 @@ static bool extend(
          rollout_step < DIFF_MAX_ROLLOUT_STEPS;
          ++rollout_step)
     {
-        DiffusionExtensionTrace trace;
-
-        trace.iter = iter;
-        trace.rollout_step = rollout_step;
-        trace.near_idx = best_idx;
-        trace.extension_type =
-            "goal_directed_diffusion";
-
-        trace.has_sample = true;
-        trace.sampled_target =
-            r_sample;
-
-        trace.has_current_pose = true;
-        trace.current_pose =
-            current_pose;
-
-        const double previous_sample_distance =
-            current_pose.distance(
-                r_sample,
-                {0, 1});
+        double previous_sample_distance =
+            current_pose.distance(r_sample, {0, 1});
 
         // The fixed random sample has been reached closely enough.
         if (previous_sample_distance <= DIFF_SAMPLE_TOL)
         {
             diagnostics.sample_reached_stops++;
-
-            trace.status =
-                "sample_reached";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
 
@@ -1426,24 +1370,8 @@ static bool extend(
                 target_mode))
         {
             diagnostics.local_target_failures++;
-
-            trace.status =
-                "local_target_failure";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
-
-        trace.has_local_target = true;
-        trace.local_target =
-            local_target;
-
-        trace.target_mode =
-            (target_mode == LocalTargetMode::Rotation)
-                ? "rotation"
-                : "translation";
 
         std::array<double, 12> observation;
 
@@ -1454,20 +1382,12 @@ static bool extend(
                 observation))
         {
             diagnostics.observation_failures++;
-
-            trace.status =
-                "observation_failure";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
 
         DiffusionAction predicted_action;
 
         diagnostics.diffusion_action_requests++;
-
         if (!request_diffusion_action(
                 current_pose,
                 local_target,
@@ -1475,18 +1395,11 @@ static bool extend(
                 predicted_action))
         {
             diagnostics.inference_failures++;
-
-            trace.status =
-                "inference_failure";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
 
-        // Preserve the pure motion primitive selected by
-        // build_local_target().
+      
+        // Preserve the pure motion primitive selected by build_local_target().
         if (target_mode == LocalTargetMode::Rotation)
         {
             predicted_action.dx_robot = 0.0;
@@ -1498,36 +1411,15 @@ static bool extend(
             predicted_action.dy_robot = 0.0;
         }
 
-        trace.has_action = true;
-        trace.applied_action =
-            predicted_action;
-
         Configuration candidate_pose;
-        std::string candidate_status;
 
-        const bool candidate_valid =
-            diffusion_action_to_world_pose(
+        if (!diffusion_action_to_world_pose(
                 cfg,
                 current_pose,
                 predicted_action,
                 candidate_pose,
-                diagnostics,
-                candidate_status);
-
-        // candidate_pose is populated before collision checking.
-        trace.has_candidate_pose = true;
-        trace.candidate_pose =
-            candidate_pose;
-
-        if (!candidate_valid)
+                diagnostics))
         {
-            trace.accepted = false;
-            trace.status =
-                candidate_status;
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
 
@@ -1536,142 +1428,97 @@ static bool extend(
         // ----------------------------------------------------
         if (target_mode == LocalTargetMode::Rotation)
         {
-            const double previous_angle_error =
+            double previous_angle_error =
                 std::fabs(
                     wrap_angle(
                         local_target.theta -
                         current_pose.theta));
 
-            const double new_angle_error =
+            double new_angle_error =
                 std::fabs(
                     wrap_angle(
                         local_target.theta -
                         candidate_pose.theta));
-
+            // if the obtained pose have been obtained in the wrong direction, diffusion policy rollout stops--//
             if (new_angle_error >
                 previous_angle_error -
                     DIFF_MIN_ANG_PROGRESS)
             {
                 diagnostics.angular_no_progress_rejections++;
-
-                trace.accepted = false;
-                trace.status =
-                    "angular_no_progress";
-
-                trace_records.push_back(
-                    trace);
-
                 break;
             }
         }
         else
         {
-            const double new_sample_distance =
+            double new_sample_distance =
                 candidate_pose.distance(
                     r_sample,
                     {0, 1});
-
+            // if the newly obtained pose is far way from the sample target pose--//
             if (new_sample_distance >
                 previous_sample_distance -
                     DIFF_MIN_POS_PROGRESS)
             {
                 diagnostics.positional_no_progress_rejections++;
-
-                trace.accepted = false;
-                trace.status =
-                    "positional_no_progress";
-
-                trace_records.push_back(
-                    trace);
-
                 break;
             }
         }
-
-        trace.accepted = true;
-        trace.status =
-            "accepted";
-
-        trace_records.push_back(
-            trace);
-
+        //--- the line stores each successful generated pose----///
         out_best_cand.rollout.push_back(
             candidate_pose);
-
         diagnostics.accepted_rollout_nodes++;
 
-        current_pose =
-            candidate_pose;
+        current_pose = candidate_pose;
     }
-
+    // if no collision-free rollouts are obtained from diffusion policy----///
     if (out_best_cand.rollout.empty())
     {
         diagnostics.failed_extensions++;
         return false;
     }
 
+ 
+
     diagnostics.successful_extensions++;
     return true;
 }
-
 
 ///-----Lateral Extension Function----------------------//////
 static bool extend_lateral(
     const PlannerConfig &cfg,
     const std::vector<RRTNode> &tree,
     int best_idx,
-    int iter,
     RotTranslateEdge &out_best_cand,
-    PlannerDiagnostics &diagnostics,
-    std::vector<DiffusionExtensionTrace> &trace_records)
+    PlannerDiagnostics &diagnostics)
 {
     if (best_idx < 0 ||
         best_idx >= static_cast<int>(tree.size()))
     {
         diagnostics.invalid_nearest_failures++;
         diagnostics.failed_extensions++;
-
-        DiffusionExtensionTrace trace;
-        trace.iter = iter;
-        trace.rollout_step = -1;
-        trace.near_idx = best_idx;
-        trace.extension_type =
-            "lateral_diffusion";
-        trace.target_mode =
-            "sideways";
-        trace.accepted = false;
-        trace.status =
-            "invalid_nearest_node";
-
-        trace_records.push_back(
-            trace);
-
         return false;
     }
 
     out_best_cand.rollout.clear();
-
+ 
     const Configuration start_pose =
         tree[best_idx].point;
 
     // Random lateral distance in [MIN_DIST, MAX_V].
     const double requested_lateral_distance =
         MIN_DIST +
-        (static_cast<double>(std::rand()) /
-         static_cast<double>(RAND_MAX)) *
+        (static_cast<double>(rand()) / RAND_MAX) *
             (MAX_V - MIN_DIST);
 
     // Positive robot-frame y = left.
     // Negative robot-frame y = right.
     const double lateral_sign =
-        (std::rand() % 2 == 0)
+        (rand() % 2 == 0)
             ? 1.0
             : -1.0;
 
-    const double lateral_heading =
-        start_pose.theta +
-        (M_PI / 2.0) * lateral_sign;
 
+    const double lateral_heading = start_pose.theta + (M_PI / 2.0) * lateral_sign;
     Configuration fixed_lateral_target;
 
     fixed_lateral_target.x =
@@ -1694,24 +1541,6 @@ static bool extend_lateral(
          rollout_step < DIFF_MAX_ROLLOUT_STEPS;
          ++rollout_step)
     {
-        DiffusionExtensionTrace trace;
-
-        trace.iter = iter;
-        trace.rollout_step = rollout_step;
-        trace.near_idx = best_idx;
-        trace.extension_type =
-            "lateral_diffusion";
-        trace.target_mode =
-            "sideways";
-
-        trace.has_sample = true;
-        trace.sampled_target =
-            fixed_lateral_target;
-
-        trace.has_current_pose = true;
-        trace.current_pose =
-            current_pose;
-
         const double previous_target_distance =
             current_pose.distance(
                 fixed_lateral_target,
@@ -1721,13 +1550,6 @@ static bool extend_lateral(
         if (previous_target_distance <= DIFF_SAMPLE_TOL)
         {
             diagnostics.sample_reached_stops++;
-
-            trace.status =
-                "sample_reached";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
 
@@ -1742,19 +1564,8 @@ static bool extend_lateral(
                 target_mode))
         {
             diagnostics.local_target_failures++;
-
-            trace.status =
-                "local_target_failure";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
-
-        trace.has_local_target = true;
-        trace.local_target =
-            local_target;
 
         std::array<double, 12> observation;
 
@@ -1765,13 +1576,6 @@ static bool extend_lateral(
                 observation))
         {
             diagnostics.observation_failures++;
-
-            trace.status =
-                "observation_failure";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
 
@@ -1786,56 +1590,34 @@ static bool extend_lateral(
                 predicted_action))
         {
             diagnostics.inference_failures++;
-
-            trace.status =
-                "inference_failure";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
 
-        // Enforce the pure lateral Go2 motion primitive.
         if (target_mode == LocalTargetMode::Sideways)
         {
+
+            // Enforce a pure lateral Go2 motion primitive.
             predicted_action.dx_robot = 0.0;
             predicted_action.dtheta = 0.0;
+
+
         }
 
-        trace.has_action = true;
-        trace.applied_action =
-            predicted_action;
-
+       
         Configuration candidate_pose;
-        std::string candidate_status;
 
-        const bool candidate_valid =
-            diffusion_action_to_world_pose(
+        if (!diffusion_action_to_world_pose(
                 cfg,
                 current_pose,
                 predicted_action,
                 candidate_pose,
-                diagnostics,
-                candidate_status);
-
-        // candidate_pose is populated before collision checking.
-        trace.has_candidate_pose = true;
-        trace.candidate_pose =
-            candidate_pose;
-
-        if (!candidate_valid)
+                diagnostics))
         {
-            trace.accepted = false;
-            trace.status =
-                candidate_status;
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
 
+        // The generated state must move closer to the fixed
+        // lateral target.
         const double new_target_distance =
             candidate_pose.distance(
                 fixed_lateral_target,
@@ -1846,23 +1628,8 @@ static bool extend_lateral(
                 DIFF_MIN_POS_PROGRESS)
         {
             diagnostics.positional_no_progress_rejections++;
-
-            trace.accepted = false;
-            trace.status =
-                "positional_no_progress";
-
-            trace_records.push_back(
-                trace);
-
             break;
         }
-
-        trace.accepted = true;
-        trace.status =
-            "accepted";
-
-        trace_records.push_back(
-            trace);
 
         out_best_cand.rollout.push_back(
             candidate_pose);
@@ -1879,9 +1646,12 @@ static bool extend_lateral(
         return false;
     }
 
+   
+
     diagnostics.successful_extensions++;
     return true;
 }
+
 
 
 static bool update_best_goal(const std::vector<RRTNode> &tree, int idx,
@@ -2043,7 +1813,6 @@ struct RRTResult {
     double cost = 1e18;
     std::vector<Configuration> path;
     std::vector<RRTNode> tree;
-    std::vector<DiffusionExtensionTrace> extension_traces;
     unsigned int seed;
     long rej_col = 0, rej_dup = 0;
     long tree_nodes_generated = 0;
@@ -2058,141 +1827,116 @@ struct RRTResult {
 // RRT search
 // ============================================================
 //-- cfg contains planner settings, seed initializes random sampling---///
-static RRTResult run_rrt(
-    const PlannerConfig &cfg,
-    unsigned int seed)
-{
+static RRTResult run_rrt(const PlannerConfig &cfg, unsigned int seed)
+{   
+    //--(a)creates an empty result structure
     RRTResult result;
 
+    //--(b)fixes the random seed so the same seed reproduces the same random tree
     result.seed = seed;
-    result.extension_traces.reserve(
-        MAX_ITERS * DIFF_MAX_ROLLOUT_STEPS);
-
     std::srand(seed);
 
-    const auto rrt_start_time =
-        std::chrono::steady_clock::now();
+    auto rrt_start_time = std::chrono::steady_clock::now();
 
-    Configuration::weight_theta =
-        cfg.w_theta;
+    //--(c)heading difference Δθ
+    // --(i) Δθ is scaled by cfg.w_theta
+    // --(ii) so orientation affects nearest-neighbor search and perhaps extension quality
+    //--- (iii) tuning w_theta allows us to control how much the planner cares about heading similarity vs position similarity when finding nearest neighbors and evaluating extensions.
+    // If large, the planner cares more about heading similarity.
+    // If small, it mostly cares about position.
+
+    Configuration::weight_theta = cfg.w_theta;
+
+
+    //-- tree
+
+    // --(a) Stores the actual RRT nodes.
+
+    //-- (b)Each RRTNode likely contains:
+
+    // -- (1) configuration point
+    //-- (2) parent index
+    //-- (3) accumulated path cost
+
+    //-- (4) So each node is a state:
+
+    // -- (a) qi=(xi,yi,θi)
+    //-- (b) with parent:parent(i)
+
+
+    //--This lets you reconstruct the final path by walking backward from goal to start.---//
 
     std::vector<RRTNode> tree;
     tree.reserve(MAX_ITERS);
 
+    //-- kd_nodes--> This is probably the KD-tree structure used for fast nearest-neighbor lookup.--//
     std::vector<KDNode> kd_nodes;
     kd_nodes.reserve(MAX_ITERS);
-
     int kd_root = -1;
+
+    //goal_idx = -1 means no goal-reaching node has been found yet
+    // best_goal_cost stores the best path cost to goal found so far
+    // the rej_* counters count rejected expansion attempts
+
     int goal_idx = -1;
+    double best_goal_cost = 1e18;
 
-    double best_goal_cost =
-        1e18;
-
+ 
+    // (7) rej_col: rejected due to collision
+    // (8) rej_dup: rejected because a duplicate or near-duplicate node was attempted
     long rej_dup = 0;
     PlannerDiagnostics diagnostics;
 
-    add_node(
-        tree,
-        kd_nodes,
-        kd_root,
-        cfg.start,
-        -1,
-        0.0,
-        rej_dup);
+    //--(9)This inserts the root of the tree.
 
-    for (int iter = 0;
-         iter < MAX_ITERS;
-         ++iter)
+    ///Mathematically:
+
+    //--(i) V={qstart}
+    //-- (ii) with:
+
+    // --parent = −1 meaning no parent
+    // -- cost = 0
+    // --So initially the tree is:T0=({qstart},∅)
+    add_node(tree, kd_nodes, kd_root, cfg.start, -1, 0.0, rej_dup);
+
+    //-- (10) This repeats the grow-tree process up to MAX_ITERS.---//
+    for (int iter = 0; iter < MAX_ITERS; ++iter)
     {
+        //-- (a) near_idx = index of nearest tree node selected for expansion
         int near_idx = -1;
+        //--(b) cand = candidate motion edge returned by extension--//
         RotTranslateEdge cand;
+        //--(c) found = whether the extension was successful (collision-free, respects motion limits, etc.)--//
         bool found = false;
 
-        // ----------------------------------------------------
-        // Lateral diffusion extension
-        // ----------------------------------------------------
-        if (
-            cfg.allow_lateral &&
-            (std::rand() % 100 <
-             LATERAL_BIAS_PERCENT))
-        {
+        if (cfg.allow_lateral && (rand() % 100 < LATERAL_BIAS_PERCENT)) {
+
             diagnostics.lateral_extension_requests++;
 
-            near_idx =
-                std::rand() %
-                static_cast<int>(tree.size());
+            near_idx = rand() % tree.size();
+            found = extend_lateral(cfg, tree, near_idx, cand, diagnostics);
 
-            found =
-                extend_lateral(
-                    cfg,
-                    tree,
-                    near_idx,
-                    iter,
-                    cand,
-                    diagnostics,
-                    result.extension_traces);
 
+            //--- Added Here---//
             if (found)
-            {
                 diagnostics.successful_lateral_extensions++;
-            }
             else
-            {
                 diagnostics.failed_lateral_extensions++;
-            }
-        }
 
-        // ----------------------------------------------------
-        // Goal-directed diffusion extension
-        // ----------------------------------------------------
-        else
-        {
-            bool sampling_goal =
-                false;
 
-            const Configuration r_sample =
-                sample(
-                    cfg,
-                    iter,
-                    GOAL_BIAS_PERCENT,
-                    sampling_goal);
+        } else {
+            bool sampling_goal = false;
 
-            near_idx =
-                find_nearest(
-                    tree,
-                    kd_nodes,
-                    kd_root,
-                    r_sample,
-                    cfg,
-                    goal_idx);
 
-            if (near_idx == -1)
-            {
-                diagnostics.invalid_nearest_failures++;
-                diagnostics.failed_extensions++;
+            Configuration r_sample = sample(cfg, iter, GOAL_BIAS_PERCENT, sampling_goal);
 
-                DiffusionExtensionTrace trace;
+            //--sampling_goal records whether this sample was the goal-biased one.--//
+            near_idx = find_nearest(tree, kd_nodes, kd_root, r_sample, cfg, goal_idx);
 
-                trace.iter = iter;
-                trace.rollout_step = -1;
-                trace.near_idx = -1;
-                trace.extension_type =
-                    "goal_directed_diffusion";
-                trace.has_sample = true;
-                trace.sampled_target =
-                    r_sample;
-                trace.accepted = false;
-                trace.status =
-                    "nearest_node_not_found";
 
-                result.extension_traces.push_back(
-                    trace);
-
-                continue;
-            }
-
-            found =
-                extend(
+            //--So this is the node from which the planner tries to extend.
+            if (near_idx != -1) {
+                found = extend(
                     cfg,
                     tree,
                     near_idx,
@@ -2200,124 +1944,104 @@ static RRTResult run_rrt(
                     sampling_goal,
                     iter,
                     cand,
-                    diagnostics,
-                    result.extension_traces);
+                    diagnostics);
+            }
         }
-
-        if (!found ||
-            cand.rollout.empty())
+        //-- This is the heart of the motion-generation logic.--//
+        if (found)
         {
-            continue;
-        }
-
-        int last_parent =
-            near_idx;
-
-        for (const Configuration &generated_pose :
-             cand.rollout)
-        {
-            // Copy before add_node(), because vector reallocation
-            // can invalidate references.
-            const Configuration parent_pose =
-                tree[last_parent].point;
-
-            const double parent_cost =
-                tree[last_parent].cost;
-
-            const double edge_cost =
-                parent_pose.distance(
-                    generated_pose);
-
-            const int new_idx =
-                add_node(
-                    tree,
-                    kd_nodes,
-                    kd_root,
-                    generated_pose,
-                    last_parent,
-                    parent_cost + edge_cost,
-                    rej_dup);
-
-            const bool improved_goal =
-                update_best_goal(
-                    tree,
-                    new_idx,
-                    cfg,
-                    goal_idx,
-                    best_goal_cost,
-                    iter);
-
-            if (improved_goal)
+            // ========================================================
+            // Case 1: Iterative diffusion rollout
+            // ========================================================
+            if (!cand.rollout.empty())
             {
-                const auto now =
-                    std::chrono::steady_clock::now();
+                int last_parent = near_idx;
 
-                result.time_to_best_goal_sec =
-                    std::chrono::duration<double>(
-                        now - rrt_start_time)
-                        .count();
+                for (const Configuration &generated_pose :
+                    cand.rollout)
+                {
+                    // Copy before add_node(), because the vector may
+                    // reallocate when a new node is inserted.
+                    Configuration parent_pose =
+                        tree[last_parent].point;
 
-                result.best_goal_iter =
-                    iter;
+                    double parent_cost =
+                        tree[last_parent].cost;
+
+                    // Weighted SE(2) edge cost:
+                    // planar distance + w_theta * angular difference.
+                    double edge_cost =
+                        parent_pose.distance(generated_pose);
+
+                    int new_idx =
+                        add_node(
+                            tree,
+                            kd_nodes,
+                            kd_root,
+                            generated_pose,
+                            last_parent,
+                            parent_cost + edge_cost,
+                            rej_dup);
+
+                    bool improved_goal =
+                        update_best_goal(
+                            tree,
+                            new_idx,
+                            cfg,
+                            goal_idx,
+                            best_goal_cost,
+                            iter);
+
+                    if (improved_goal)
+                    {
+                        auto now =
+                            std::chrono::steady_clock::now();
+
+                        result.time_to_best_goal_sec =
+                            std::chrono::duration<double>(
+                                now - rrt_start_time).count();
+
+                        result.best_goal_iter = iter;
+                    }
+
+                    last_parent = new_idx;
+                }
             }
 
-            last_parent =
-                new_idx;
         }
+    
     }
 
-    diagnostics.duplicate_nodes_found =
-        rej_dup;
+    diagnostics.duplicate_nodes_found = rej_dup;
 
     result.rej_col =
         diagnostics.endpoint_collision_rejections +
         diagnostics.rotation_collision_rejections +
         diagnostics.segment_collision_rejections;
-
-    result.rej_dup =
-        rej_dup;
-
-    result.tree_nodes_generated =
-        static_cast<long>(tree.size());
-
-    result.diagnostics =
-        diagnostics;
+    result.rej_dup = rej_dup;
+    result.tree_nodes_generated = static_cast<long>(tree.size());
+    result.diagnostics = diagnostics;
 
     if (goal_idx != -1)
     {
         result.success = true;
-        result.cost =
-            best_goal_cost;
+        result.cost = best_goal_cost;
 
         std::vector<int> path_idx;
-
-        int curr =
-            goal_idx;
-
+        int curr = goal_idx;
         while (curr != -1)
         {
-            path_idx.push_back(
-                curr);
-
-            curr =
-                tree[curr].parent;
+            path_idx.push_back(curr);
+            curr = tree[curr].parent;
         }
+        std::reverse(path_idx.begin(), path_idx.end());
 
-        std::reverse(
-            path_idx.begin(),
-            path_idx.end());
-
-        for (const int idx :
-             path_idx)
-        {
-            result.path.push_back(
-                tree[idx].point);
+        for (int idx : path_idx) {
+            result.path.push_back(tree[idx].point);
         }
+      
     }
-
-    // Preserve the explored tree on both success and failure.
-    result.tree =
-        std::move(tree);
+      result.tree = std::move(tree);
 
     return result;
 }
@@ -2480,107 +2204,6 @@ static bool write_rrt_tree(const std::vector<RRTNode> &tree, unsigned int seed, 
     tree_file.close();
     return true;
 }
-
-static bool write_diffusion_extension_trace(
-    const std::vector<DiffusionExtensionTrace> &traces,
-    const std::string &filename)
-{
-    std::ofstream file(filename);
-
-    if (!file)
-    {
-        return false;
-    }
-
-    file << std::fixed
-         << std::setprecision(6);
-
-    file
-        << "iter,rollout_step,extension_type,near_idx,"
-        << "sample_x,sample_y,sample_theta,"
-        << "current_x,current_y,current_theta,"
-        << "local_x,local_y,local_theta,"
-        << "target_mode,"
-        << "action_dx_robot,action_dy_robot,action_dtheta,"
-        << "candidate_x,candidate_y,candidate_theta,"
-        << "accepted,status\n";
-
-    const auto write_pose =
-        [&file](
-            bool available,
-            const Configuration &pose)
-        {
-            if (available)
-            {
-                file
-                    << pose.x << ","
-                    << pose.y << ","
-                    << pose.theta;
-            }
-            else
-            {
-                file << "nan,nan,nan";
-            }
-        };
-
-    for (const auto &trace : traces)
-    {
-        file
-            << trace.iter << ","
-            << trace.rollout_step << ","
-            << trace.extension_type << ","
-            << trace.near_idx << ",";
-
-        write_pose(
-            trace.has_sample,
-            trace.sampled_target);
-
-        file << ",";
-
-        write_pose(
-            trace.has_current_pose,
-            trace.current_pose);
-
-        file << ",";
-
-        write_pose(
-            trace.has_local_target,
-            trace.local_target);
-
-        file
-            << ","
-            << trace.target_mode
-            << ",";
-
-        if (trace.has_action)
-        {
-            file
-                << trace.applied_action.dx_robot << ","
-                << trace.applied_action.dy_robot << ","
-                << trace.applied_action.dtheta;
-        }
-        else
-        {
-            file << "nan,nan,nan";
-        }
-
-        file << ",";
-
-        write_pose(
-            trace.has_candidate_pose,
-            trace.candidate_pose);
-
-        file
-            << ","
-            << (trace.accepted ? 1 : 0)
-            << ","
-            << trace.status
-            << "\n";
-    }
-
-    return true;
-}
-
 
 // ============================================================
 // Controller: waypoints -> velocity commands
@@ -3265,7 +2888,6 @@ int main(int argc, char **argv)
     }
 
     std::string rrt_tree_out;
-    std::string extension_trace_out;
 
     if (!output_dir_override.empty())
     {
@@ -3303,13 +2925,6 @@ int main(int argc, char **argv)
                 "Diffusion_rrt_tree",
                 run_idx,
                 ".txt");
-
-        extension_trace_out =
-            output_dir_override + "/" +
-            indexed_filename(
-                "Lateral_Diffusion_extension_trace",
-                run_idx,
-                ".csv");
 
         std::cout
             << "Using diffusion comparison output directory: "
@@ -3379,13 +2994,6 @@ int main(int argc, char **argv)
                 run_idx,
                 ".txt");
 
-        extension_trace_out =
-            planning_tree_dir + "/" +
-            indexed_filename(
-                "Lateral_Diffusion_extension_trace",
-                run_idx,
-                ".csv");
-
         std::cout
             << "Using standalone diffusion output folders under: "
             << dataset_root << "\n";
@@ -3406,7 +3014,6 @@ int main(int argc, char **argv)
     std::remove(cfg.waypoints_out.c_str());
     std::remove(cfg.controls_out.c_str());
     std::remove(rrt_tree_out.c_str());
-    std::remove(extension_trace_out.c_str());
     //std::remove(current_controls_file.c_str());
 
     // ── Pre-search Safety Check ──
@@ -3465,160 +3072,46 @@ int main(int argc, char **argv)
    }
 
     // ── Plan ──
-    const int num_runs =
-        AOX_RUNS;
+    int num_runs = AOX_RUNS;
+    RRTResult best_overall;
+    best_overall.cost = 1e18;
 
-    RRTResult selected_result;
-    selected_result.cost =
-        1e18;
+    std::printf("\n=== Executing %d RRT search attempts ===\n", num_runs);
+    for (int i = 0; i < num_runs; ++i) {
+        unsigned int run_seed = (cfg.seed == -1) ? (final_seed + i) : (unsigned int)cfg.seed;
+        RRTResult res = run_rrt(cfg, run_seed);
+        print_machine_readable_diagnostics(res);
 
-    bool have_selected_result =
-        false;
-
-    std::printf(
-        "\n=== Executing %d RRT search attempts ===\n",
-        num_runs);
-
-    for (int i = 0;
-         i < num_runs;
-         ++i)
-    {
-        const unsigned int run_seed =
-            (cfg.seed == -1)
-                ? (final_seed + i)
-                : static_cast<unsigned int>(cfg.seed);
-
-        RRTResult res =
-            run_rrt(
-                cfg,
-                run_seed);
-
-        print_machine_readable_diagnostics(
-            res);
-
-        if (res.success)
-        {
-            std::printf(
-                "  Run %2d: cost = %10.4f (seed=%u)\n",
-                i,
-                res.cost,
-                run_seed);
-
-            // Prefer a successful result. Among successful results,
-            // retain the one with the lowest cost.
-            if (!have_selected_result ||
-                !selected_result.success ||
-                res.cost < selected_result.cost)
-            {
-                selected_result =
-                    std::move(res);
-
-                have_selected_result =
-                    true;
+        if (res.success) {
+            std::printf("  Run %2d: cost = %10.4f (seed=%u)\n", i, res.cost, run_seed);
+            if (res.cost < best_overall.cost) {
+                best_overall = std::move(res);
             }
+        } else {
+            std::printf("  Run %2d: failed\n", i);
         }
-        else
-        {
-            std::printf(
-                "  Run %2d: failed (seed=%u, tree_nodes=%zu)\n",
-                i,
-                run_seed,
-                res.tree.size());
-
-            // If no successful run exists, retain the failed run
-            // with the largest explored tree for diagnostics.
-            if (!have_selected_result ||
-                (!selected_result.success &&
-                 res.tree.size() >
-                     selected_result.tree.size()))
-            {
-                selected_result =
-                    std::move(res);
-
-                have_selected_result =
-                    true;
-            }
-        }
-
-        if (cfg.seed != -1)
-        {
-            break;
-        }
+        if (cfg.seed != -1) break; // Don't repeat if seed is fixed
     }
 
-    // Save the selected tree and trace on both success and failure.
-    if (!have_selected_result)
-    {
-        std::cerr
-            << "ERROR: no lateral diffusion-RRT result was produced.\n";
-
-        diffusion_python_process.stop();
-        return 1;
+    if (!best_overall.success) {
+        std::printf("RRT search failed to find a path in all attempts.\n");
+        return 0; // Still return 0 so user can see the setup in viz
     }
 
-    if (!write_rrt_tree(
-            selected_result.tree,
-            selected_result.seed,
-            rrt_tree_out))
-    {
-        std::cerr
-            << "ERROR: failed to write lateral diffusion RRT tree: "
-            << rrt_tree_out << "\n";
+    double planning_time_sec = best_overall.time_to_best_goal_sec;
 
-        diffusion_python_process.stop();
-        return 1;
-    }
+    std::printf("Best path found at iter %d in %.6f seconds within the winning RRT run.\n",
+                best_overall.best_goal_iter,
+                planning_time_sec);
 
-    if (!write_diffusion_extension_trace(
-            selected_result.extension_traces,
-            extension_trace_out))
-    {
-        std::cerr
-            << "ERROR: failed to write lateral diffusion extension trace: "
-            << extension_trace_out << "\n";
+    std::printf("\nGlobally best cost: %.4f (seed=%u)\n", best_overall.cost, best_overall.seed);
+    std::printf("Best run rejections: col=%ld, dup=%ld\n", best_overall.rej_col, best_overall.rej_dup);
 
-        diffusion_python_process.stop();
-        return 1;
-    }
+    write_rrt_tree(best_overall.tree, best_overall.seed, rrt_tree_out);
+    std::vector<Configuration> path = best_overall.path;
 
-    // On failure, tree and trace remain available for plotting.
-    // Waypoints and controls are intentionally not generated.
-    if (!selected_result.success)
-    {
-        std::printf(
-            "RRT search failed to find a path. "
-            "The explored lateral diffusion RRT tree and extension "
-            "trace were saved.\n");
-
-        diffusion_python_process.stop();
-        return 0;
-    }
-
-    const double planning_time_sec =
-        selected_result.time_to_best_goal_sec;
-
-    std::printf(
-        "Best path found at iter %d in %.6f seconds "
-        "within the winning RRT run.\n",
-        selected_result.best_goal_iter,
-        planning_time_sec);
-
-    std::printf(
-        "\nGlobally best cost: %.4f (seed=%u)\n",
-        selected_result.cost,
-        selected_result.seed);
-
-    std::printf(
-        "Best run rejections: col=%ld, dup=%ld\n",
-        selected_result.rej_col,
-        selected_result.rej_dup);
-
-    std::vector<Configuration> path =
-        selected_result.path;
-
-    collision_check_path(
-        path,
-        cfg);
+    
+    collision_check_path(path, cfg);
 
 
     if (!write_waypoints_file(path, cfg.waypoints_out))

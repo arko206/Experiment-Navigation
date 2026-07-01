@@ -14,11 +14,17 @@ Expected directory layout:
         │   │   ├── local_obs_<run_idx>_rrt.txt
         │   │   └── local_goal_<run_idx>_rrt.txt
         │   └── ...
-        └── Diffusion_RRT_<comparison_idx>/
-            ├── diff_rrt_<run_idx>/
-            │   ├── se2_waypoints_<run_idx>_diff_rrt.txt
-            │   ├── local_obs_<run_idx>_diff_rrt.txt
-            │   └── local_goal_<run_idx>_diff_rrt.txt
+        ├── Diffusion_RRT_<comparison_idx>/
+        │   ├── diff_rrt_<run_idx>/
+        │   │   ├── se2_waypoints_<run_idx>_diff_rrt.txt
+        │   │   ├── local_obs_<run_idx>_diff_rrt.txt
+        │   │   └── local_goal_<run_idx>_diff_rrt.txt
+        │   └── ...
+        └── Lateral_Diff_RRT_<comparison_idx>/
+            ├── lateral_diff_rrt_<run_idx>/
+            │   ├── se2_waypoints_<run_idx>_lateral_diff_rrt.txt
+            │   ├── local_obs_<run_idx>_lateral_diff_rrt.txt
+            │   └── local_goal_<run_idx>_lateral_diff_rrt.txt
             └── ...
 
 A plot is generated only when a non-empty waypoint file exists. The PNG is
@@ -42,8 +48,9 @@ import numpy as np
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Plot all successful classical-RRT and diffusion-RRT paths "
-            "from one Comparison_Values/Comparison_<idx> folder."
+            "Plot all successful classical-RRT, diffusion-RRT, and "
+            "lateral-diffusion-RRT paths from one "
+            "Comparison_Values/Comparison_<idx> folder."
         )
     )
     parser.add_argument(
@@ -55,7 +62,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--dataset_root",
         type=Path,
-        default=Path.home() / "Navigation_Dataset",
+        default=(
+            Path.home()
+            / "Single_Step_Position_Change"
+            / "Navigation_Dataset"
+        ),
         help="Navigation_Dataset root directory.",
     )
     parser.add_argument(
@@ -720,6 +731,15 @@ def main() -> int:
             ),
             "glob": "diff_rrt_*",
             "suffix": "diff_rrt",
+        },
+        {
+            "label": "Lateral Diffusion RRT",
+            "directory": (
+                comparison_dir
+                / f"Lateral_Diff_RRT_{args.comparison_idx}"
+            ),
+            "glob": "lateral_diff_rrt_*",
+            "suffix": "lateral_diff_rrt",
         },
     ]
 
